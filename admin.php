@@ -1,39 +1,109 @@
 <?php
 include 'db.php';
+requireAdmin();
 
-// Security: Strict session check
-if (!isset($_SESSION['admin'])) { 
-    header("Location: admin_login.php"); 
-    exit(); 
-}
-
-// Security: Regenerate session periodically
-if (!isset($_SESSION['last_regeneration']) || time() - $_SESSION['last_regeneration'] > 300) {
-    session_regenerate_id(true);
-    $_SESSION['last_regeneration'] = time();
-}
-
-// Generate CSRF token if not exists
+// CSRF Token
 if (!isset($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 }
 
-// Error handling for queries
-$today = $week = $month = 0;
+// Get filter parameters
+$dateRange = $_GET['range'] ?? 'today';
+$customStart = $_GET['start'] ?? '';
+$customEnd = $_GET['end'] ?? '';
+$filterReason = $_GET['reason'] ?? '';
+$filterCollege = $_GET['college'] ?? '';
+$filterEmployee = isset($_GET['employee']) ? true : false;
 
-try {
-    $today = $conn->query("SELECT COUNT(*) c FROM visitor_log WHERE DATE(timestamp)=CURDATE()")->fetch_assoc()['c'] ?? 0;
-    $week = $conn->query("SELECT COUNT(*) c FROM visitor_log WHERE YEARWEEK(timestamp)=YEARWEEK(NOW())")->fetch_assoc()['c'] ?? 0;
-    $month = $conn->query("SELECT COUNT(*) c FROM visitor_log WHERE MONTH(timestamp)=MONTH(NOW()) AND YEAR(timestamp)=YEAR(NOW())")->fetch_assoc()['c'] ?? 0;
-} catch (Exception $e) {
-    error_log("Dashboard stats error: " . $e->getMessage());
+// Build statistics query based on filters
+function buildStatsQuery($conn, $dateRange, $customStart, $customEnd, $filterReason, $filterCollege, $filterEmployee) {
+    $whereConditions = ["1=1"];
+    $params = [];
+    $types = "";
+    
+    // Date filtering
+    switch($dateRange) {
+        case 'today':
+            $whereConditions[] = "DATE(v.timestamp) = CURDATE()";
+            break;
+        case 'week':
+            $whereConditions[] = "YEARWEEK(v.timestamp) = YEARWEEK(NOW())";
+            break;
+        case 'month':
+            $whereConditions[] = "MONTH(v.timestamp) = MONTH(NOW()) AND YEAR(v.timestamp) = YEAR(NOW())";
+            break;
+        case 'custom':
+            if ($customStart && $customEnd) {
+                $whereConditions[] = "DATE(v.timestamp) BETWEEN ? AND ?";
+                $params[] = $customStart;
+                $params[] = $customEnd;
+                $types .= "ss";
+            }
+            break;
+    }
+    
+    // Reason filter
+    if ($filterReason) {
+        $whereConditions[] = "v.reason = ?";
+        $params[] = $filterReason;
+        $types .= "s";
+    }
+    
+    // College filter
+    if ($filterCollege) {
+        $whereConditions[] = "u.college = ?";
+        $params[] = $filterCollege;
+        $types .= "s";
+    }
+    
+    // Employee filter
+    if ($filterEmployee) {
+        $whereConditions[] = "u.is_employee = 1";
+    }
+    
+    $whereClause = implode(" AND ", $whereConditions);
+    
+    // Get total count
+    $countQuery = "SELECT COUNT(*) as total FROM visitor_log v JOIN users u ON v.user_id = u.id WHERE $whereClause";
+    $stmt = $conn->prepare($countQuery);
+    if (!empty($params)) {
+        $stmt->bind_param($types, ...$params);
+    }
+    $stmt->execute();
+    $total = $stmt->get_result()->fetch_assoc()['total'];
+    
+    // Get breakdown by reason
+    $reasonQuery = "SELECT v.reason, COUNT(*) as count FROM visitor_log v JOIN users u ON v.user_id = u.id WHERE $whereClause GROUP BY v.reason";
+    $stmt = $conn->prepare($reasonQuery);
+    if (!empty($params)) {
+        $stmt->bind_param($types, ...$params);
+    }
+    $stmt->execute();
+    $reasonStats = $stmt->get_result();
+    
+    // Get breakdown by college
+    $collegeQuery = "SELECT u.college, COUNT(*) as count FROM visitor_log v JOIN users u ON v.user_id = u.id WHERE $whereClause AND u.college IS NOT NULL GROUP BY u.college";
+    $stmt = $conn->prepare($collegeQuery);
+    if (!empty($params)) {
+        $stmt->bind_param($types, ...$params);
+    }
+    $stmt->execute();
+    $collegeStats = $stmt->get_result();
+    
+    return [
+        'total' => $total,
+        'reasons' => $reasonStats,
+        'colleges' => $collegeStats
+    ];
 }
 
-// Calculate trends (mock data for demo - replace with real calculations)
-$today_trend = "+12%";
-$week_trend = "-5%";
-$month_trend = "+18%";
+$stats = buildStatsQuery($conn, $dateRange, $customStart, $customEnd, $filterReason, $filterCollege, $filterEmployee);
+
+// Get unique reasons and colleges for filters
+$reasons = $conn->query("SELECT DISTINCT reason FROM visitor_log ORDER BY reason");
+$colleges = $conn->query("SELECT DISTINCT college FROM users WHERE college IS NOT NULL ORDER BY college");
 ?>
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -47,6 +117,7 @@ $month_trend = "+18%";
             --danger: #e74c3c;
             --success: #27ae60;
             --warning: #f1c40f;
+            --info: #3498db;
             --bg: #f0f2f5;
             --card-bg: #ffffff;
             --text: #2c3e50;
@@ -56,19 +127,18 @@ $month_trend = "+18%";
         
         * { margin: 0; padding: 0; box-sizing: border-box; }
         
-        body { 
-            font-family: 'Segoe UI', system-ui, sans-serif; 
-            background: var(--bg); 
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: var(--bg);
             color: var(--text);
             line-height: 1.6;
         }
         
-        /* Modern Header */
-        .admin-header { 
-            background: var(--card-bg); 
-            padding: 0 40px; 
-            display: flex; 
-            align-items: center; 
+        .admin-header {
+            background: var(--card-bg);
+            padding: 0 40px;
+            display: flex;
+            align-items: center;
             justify-content: space-between;
             border-bottom: 1px solid var(--border);
             height: 70px;
@@ -78,15 +148,15 @@ $month_trend = "+18%";
             box-shadow: 0 2px 10px rgba(0,0,0,0.05);
         }
         
-        .brand { 
-            display: flex; 
-            align-items: center; 
-            gap: 15px; 
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 15px;
         }
         
-        .logo-box { 
-            background: var(--primary); 
-            color: white; 
+        .logo-box {
+            background: var(--primary);
+            color: white;
             width: 45px;
             height: 45px;
             display: flex;
@@ -94,74 +164,12 @@ $month_trend = "+18%";
             justify-content: center;
             border-radius: 12px;
             font-size: 1.3rem;
-            box-shadow: 0 4px 15px rgba(11, 93, 59, 0.3);
-        }
-        
-        .brand h2 { font-size: 1.3rem; color: var(--text); font-weight: 700; }
-        
-        .header-search { 
-            background: var(--bg); 
-            border-radius: 25px; 
-            padding: 10px 20px; 
-            width: 400px; 
-            display: flex; 
-            align-items: center;
-            border: 2px solid transparent;
-            transition: all 0.3s;
-        }
-        
-        .header-search:focus-within {
-            border-color: var(--primary);
-            background: white;
-            box-shadow: 0 0 0 4px rgba(11, 93, 59, 0.1);
-        }
-        
-        .header-search i { color: var(--text-muted); margin-right: 10px; }
-        .header-search input { 
-            background: none; 
-            border: none; 
-            outline: none; 
-            width: 100%;
-            font-size: 0.95rem;
         }
         
         .header-actions {
             display: flex;
             align-items: center;
             gap: 20px;
-        }
-        
-        .notification-btn {
-            position: relative;
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            background: var(--bg);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            transition: all 0.3s;
-            border: none;
-            color: var(--text-muted);
-        }
-        
-        .notification-btn:hover {
-            background: var(--primary);
-            color: white;
-            transform: scale(1.1);
-        }
-        
-        .notification-badge {
-            position: absolute;
-            top: -2px;
-            right: -2px;
-            background: var(--danger);
-            color: white;
-            font-size: 0.7rem;
-            padding: 2px 6px;
-            border-radius: 10px;
-            font-weight: 700;
         }
         
         .admin-profile {
@@ -176,44 +184,117 @@ $month_trend = "+18%";
         
         .admin-profile:hover { background: var(--bg); }
         
-        .avatar-sm { 
-            width: 40px; 
-            height: 40px; 
-            border-radius: 50%; 
-            background: var(--primary); 
+        .avatar-sm {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: var(--primary);
             color: white;
-            display: flex; 
-            align-items: center; 
-            justify-content: center; 
+            display: flex;
+            align-items: center;
+            justify-content: center;
             font-weight: 700;
-            font-size: 0.9rem;
         }
         
-        /* Dashboard Content */
         .dashboard-content { padding: 30px 40px; max-width: 1600px; margin: 0 auto; }
         
-        /* Stats Grid */
-        .stats-row { 
-            display: grid; 
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); 
-            gap: 24px; 
-            margin-bottom: 30px; 
+        /* Filter Section */
+        .filter-section {
+            background: var(--card-bg);
+            padding: 25px;
+            border-radius: 20px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
         }
         
-        .stat-card { 
-            background: var(--card-bg); 
-            padding: 24px; 
-            border-radius: 20px; 
-            box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+        .filter-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .filter-group label {
+            display: block;
+            font-size: 0.8rem;
+            font-weight: 700;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            margin-bottom: 8px;
+        }
+        
+        .filter-group select,
+        .filter-group input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid var(--border);
+            border-radius: 12px;
+            font-size: 0.95rem;
+            transition: all 0.3s;
+        }
+        
+        .filter-group select:focus,
+        .filter-group input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 4px rgba(11, 93, 59, 0.1);
+        }
+        
+        .filter-actions {
+            display: flex;
+            gap: 12px;
+        }
+        
+        .btn {
+            padding: 12px 24px;
+            border-radius: 12px;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: var(--primary-light);
+            transform: translateY(-2px);
+        }
+        
+        .btn-secondary {
+            background: var(--bg);
+            color: var(--text);
+            border: 2px solid var(--border);
+        }
+        
+        /* Stats Cards */
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 24px;
+            margin-bottom: 30px;
+        }
+        
+        .stat-card {
+            background: var(--card-bg);
+            padding: 24px;
+            border-radius: 20px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
             position: relative;
             overflow: hidden;
-            transition: transform 0.3s, box-shadow 0.3s;
+            transition: transform 0.3s;
             border: 1px solid var(--border);
         }
         
         .stat-card:hover {
             transform: translateY(-5px);
-            box-shadow: 0 8px 30px rgba(0,0,0,0.1);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.1);
         }
         
         .stat-card::before {
@@ -227,12 +308,12 @@ $month_trend = "+18%";
         }
         
         .stat-card.warning::before { background: var(--warning); }
-        .stat-card.danger::before { background: var(--danger); }
-        .stat-card.info::before { background: #3498db; }
+        .stat-card.info::before { background: var(--info); }
+        .stat-card.success::before { background: var(--success); }
         
-        .stat-top { 
-            display: flex; 
-            justify-content: space-between; 
+        .stat-top {
+            display: flex;
+            justify-content: space-between;
             align-items: center;
             margin-bottom: 12px;
         }
@@ -242,217 +323,155 @@ $month_trend = "+18%";
             font-size: 0.9rem;
             font-weight: 600;
             text-transform: uppercase;
-            letter-spacing: 0.5px;
         }
         
-        .trend { 
-            padding: 4px 10px; 
-            border-radius: 20px; 
-            font-size: 0.8rem; 
-            font-weight: 700;
-            display: flex;
-            align-items: center;
-            gap: 4px;
-        }
-        
-        .trend.up { background: #d4edda; color: var(--success); }
-        .trend.down { background: #f8d7da; color: var(--danger); }
-        
-        .stat-value { 
-            font-size: 2.5rem; 
-            font-weight: 800; 
+        .stat-value {
+            font-size: 2.5rem;
+            font-weight: 800;
             color: var(--text);
             margin: 10px 0;
         }
         
-        .stat-comparison {
-            font-size: 0.85rem;
-            color: var(--text-muted);
+        /* Breakdown Sections */
+        .breakdown-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 24px;
+            margin-bottom: 30px;
+        }
+        
+        .breakdown-card {
+            background: var(--card-bg);
+            padding: 24px;
+            border-radius: 20px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+        }
+        
+        .breakdown-card h3 {
+            margin-bottom: 20px;
+            color: var(--text);
+            font-size: 1.1rem;
+        }
+        
+        .breakdown-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .breakdown-item:last-child {
+            border-bottom: none;
+        }
+        
+        .breakdown-label {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .breakdown-bar {
+            width: 100px;
+            height: 8px;
+            background: var(--bg);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        
+        .breakdown-fill {
+            height: 100%;
+            background: var(--primary);
+            border-radius: 4px;
+            transition: width 0.5s ease;
         }
         
         /* Table Section */
-        .table-section { 
-            background: var(--card-bg); 
-            border-radius: 24px; 
-            padding: 30px; 
-            box-shadow: 0 4px 20px rgba(0,0,0,0.05);
-            border: 1px solid var(--border);
+        .table-section {
+            background: var(--card-bg);
+            border-radius: 24px;
+            padding: 30px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
         }
         
-        .table-ctrl { 
-            display: flex; 
-            justify-content: space-between; 
+        .table-ctrl {
+            display: flex;
+            justify-content: space-between;
             align-items: center;
             margin-bottom: 25px;
             flex-wrap: wrap;
             gap: 15px;
         }
         
-        .table-title h3 { 
-            font-size: 1.3rem; 
-            margin-bottom: 5px;
-            color: var(--text);
-        }
-        
-        .table-title p { 
-            color: var(--text-muted); 
-            font-size: 0.9rem;
-        }
-        
-        .table-actions {
-            display: flex;
-            gap: 12px;
-        }
-        
-        .btn {
-            padding: 10px 20px;
-            border-radius: 12px;
-            border: none;
-            cursor: pointer;
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            transition: all 0.3s;
-            font-size: 0.9rem;
-        }
-        
-        .btn-primary {
-            background: var(--primary);
-            color: white;
-        }
-        
-        .btn-primary:hover {
-            background: var(--primary-light);
-            transform: translateY(-2px);
-            box-shadow: 0 4px 15px rgba(11, 93, 59, 0.3);
-        }
-        
-        .btn-secondary {
-            background: var(--bg);
-            color: var(--text);
-            border: 1px solid var(--border);
-        }
-        
-        .btn-secondary:hover {
-            background: var(--border);
-        }
-        
-        /* Modern Table */
         .table-wrapper {
             overflow-x: auto;
             border-radius: 16px;
             border: 1px solid var(--border);
         }
         
-        table { 
-            width: 100%; 
+        table {
+            width: 100%;
             border-collapse: separate;
             border-spacing: 0;
             font-size: 0.95rem;
         }
         
-        th { 
+        th {
             background: var(--bg);
             color: var(--text-muted);
             font-size: 0.75rem;
             font-weight: 700;
             text-transform: uppercase;
-            letter-spacing: 0.5px;
             padding: 16px;
             text-align: left;
             border-bottom: 1px solid var(--border);
-            white-space: nowrap;
         }
         
-        td { 
-            padding: 16px; 
+        td {
+            padding: 16px;
             border-bottom: 1px solid var(--border);
-            color: var(--text);
         }
         
         tr:hover td {
             background: #f8f9fa;
         }
         
-        tr:last-child td {
-            border-bottom: none;
+        .user-cell {
+            display: flex;
+            align-items: center;
+            gap: 12px;
         }
         
-        .user-cell { 
-            display: flex; 
-            align-items: center; 
-            gap: 12px; 
-        }
-        
-        .user-avatar { 
-            width: 42px; 
-            height: 42px; 
-            border-radius: 50%; 
+        .user-avatar {
+            width: 42px;
+            height: 42px;
+            border-radius: 50%;
             background: linear-gradient(135deg, var(--primary), var(--primary-light));
             color: white;
-            display: flex; 
-            align-items: center; 
-            justify-content: center; 
+            display: flex;
+            align-items: center;
+            justify-content: center;
             font-weight: 700;
             font-size: 0.85rem;
-            flex-shrink: 0;
         }
         
-        .user-info strong {
-            display: block;
-            font-weight: 600;
-            color: var(--text);
-        }
-        
-        .user-info small {
-            color: var(--text-muted);
+        .pill {
+            padding: 6px 14px;
+            border-radius: 20px;
             font-size: 0.8rem;
-        }
-        
-        .pill { 
-            padding: 6px 14px; 
-            border-radius: 20px; 
-            font-size: 0.8rem; 
             font-weight: 700;
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
         }
         
-        .pill::before {
-            content: '';
-            width: 6px;
-            height: 6px;
-            border-radius: 50%;
-        }
+        .pill-green { background: #d4edda; color: #155724; }
+        .pill-red { background: #f8d7da; color: #721c24; }
         
-        .pill-green { 
-            background: #d4edda; 
-            color: #155724;
-        }
-        .pill-green::before { background: var(--success); }
-        
-        .pill-red { 
-            background: #f8d7da; 
-            color: #721c24;
-        }
-        .pill-red::before { background: var(--danger); }
-        
-        .restricted-row { background: #fff5f5 !important; }
-        .restricted-row:hover { background: #ffe0e0 !important; }
-        
-        .btn-action { 
+        .btn-action {
             padding: 8px 16px;
             border-radius: 10px;
             border: none;
             font-weight: 600;
             cursor: pointer;
             transition: all 0.3s;
-            font-size: 0.85rem;
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
         }
         
         .btn-action.block {
@@ -466,112 +485,17 @@ $month_trend = "+18%";
             color: white;
         }
         
-        .btn-action.unblock {
-            background: var(--danger);
-            color: white;
-        }
-        
-        .btn-action.unblock:hover {
-            background: #c0392b;
-        }
-        
-        .btn-action:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-        }
-        
-        /* Loading State */
-        .skeleton {
-            background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
-            background-size: 200% 100%;
-            animation: loading 1.5s infinite;
-            border-radius: 4px;
-        }
-        
-        @keyframes loading {
-            0% { background-position: 200% 0; }
-            100% { background-position: -200% 0; }
-        }
-        
-        /* Empty State */
-        .empty-state {
-            text-align: center;
-            padding: 60px 20px;
-            color: var(--text-muted);
-        }
-        
-        .empty-state i {
-            font-size: 3rem;
-            margin-bottom: 15px;
-            opacity: 0.5;
-        }
-        
-        /* Responsive */
-        @media (max-width: 768px) {
-            .admin-header {
-                padding: 0 20px;
-                flex-wrap: wrap;
-                height: auto;
-                padding-top: 15px;
-                padding-bottom: 15px;
-            }
-            
-            .header-search {
-                width: 100%;
-                order: 3;
-                margin-top: 15px;
-            }
-            
-            .dashboard-content {
-                padding: 20px;
-            }
-            
-            .stats-row {
-                grid-template-columns: 1fr;
-            }
-            
-            .table-ctrl {
-                flex-direction: column;
-                align-items: stretch;
-            }
-            
-            .table-actions {
-                justify-content: stretch;
-            }
-            
-            .btn {
-                flex: 1;
-                justify-content: center;
-            }
-        }
-        
-        /* Toast Notification */
-        .toast {
-            position: fixed;
-            bottom: 30px;
-            right: 30px;
-            background: var(--text);
-            color: white;
-            padding: 16px 24px;
-            border-radius: 12px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        /* Custom Date Range */
+        .custom-range {
             display: none;
-            align-items: center;
-            gap: 12px;
-            z-index: 1000;
-            animation: slideIn 0.3s ease;
-            min-width: 300px;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-top: 15px;
         }
         
-        @keyframes slideIn {
-            from { transform: translateX(400px); opacity: 0; }
-            to { transform: translateX(0); opacity: 1; }
+        .custom-range.active {
+            display: grid;
         }
-        
-        .toast.show { display: flex; }
-        .toast.success { background: var(--success); }
-        .toast.error { background: var(--danger); }
-        .toast.info { background: #3498db; }
     </style>
 </head>
 <body>
@@ -579,75 +503,196 @@ $month_trend = "+18%";
 <header class="admin-header">
     <div class="brand">
         <div class="logo-box"><i class="fas fa-book-reader"></i></div>
-        <h2>NEU Library Visitor Log</h2>
-    </div>
-    <div class="header-search">
-        <i class="fas fa-search"></i>
-        <input type="text" id="search" placeholder="Search by Name, Program, or Reason..." onkeyup="filterTable()">
+        <h2>NEU Library Admin Dashboard</h2>
     </div>
     <div class="header-actions">
-        <button class="notification-btn" onclick="showToast('No new notifications', 'info')">
-            <i class="far fa-bell"></i>
-            <span class="notification-badge">3</span>
-        </button>
         <div class="admin-profile" onclick="logout()">
-            <div class="avatar-sm">AD</div>
-            <i class="fas fa-chevron-down" style="color: var(--text-muted); font-size: 0.8rem;"></i>
+            <div class="avatar-sm"><?= strtoupper(substr($_SESSION['user_name'], 0, 2)) ?></div>
+            <span><?= htmlspecialchars($_SESSION['user_name']) ?></span>
+            <i class="fas fa-chevron-down" style="color: var(--text-muted);"></i>
         </div>
     </div>
 </header>
 
 <main class="dashboard-content">
+    
+    <!-- Filter Section -->
+    <div class="filter-section">
+        <h3 style="margin-bottom: 20px;"><i class="fas fa-filter"></i> Filter Statistics</h3>
+        <form method="GET" action="">
+            <div class="filter-grid">
+                <div class="filter-group">
+                    <label>Date Range</label>
+                    <select name="range" id="rangeSelect" onchange="toggleCustomRange()">
+                        <option value="today" <?= $dateRange == 'today' ? 'selected' : '' ?>>Today</option>
+                        <option value="week" <?= $dateRange == 'week' ? 'selected' : '' ?>>This Week</option>
+                        <option value="month" <?= $dateRange == 'month' ? 'selected' : '' ?>>This Month</option>
+                        <option value="custom" <?= $dateRange == 'custom' ? 'selected' : '' ?>>Custom Range</option>
+                    </select>
+                </div>
+                
+                <div class="filter-group">
+                    <label>Reason for Visit</label>
+                    <select name="reason">
+                        <option value="">All Reasons</option>
+                        <?php while($r = $reasons->fetch_assoc()): ?>
+                            <option value="<?= htmlspecialchars($r['reason']) ?>" <?= $filterReason == $r['reason'] ? 'selected' : '' ?>>
+                                <?= htmlspecialchars($r['reason']) ?>
+                            </option>
+                        <?php endwhile; ?>
+                    </select>
+                </div>
+                
+                <div class="filter-group">
+                    <label>College/Department</label>
+                    <select name="college">
+                        <option value="">All Colleges</option>
+                        <?php while($c = $colleges->fetch_assoc()): ?>
+                            <option value="<?= htmlspecialchars($c['college']) ?>" <?= $filterCollege == $c['college'] ? 'selected' : '' ?>>
+                                <?= htmlspecialchars($c['college']) ?>
+                            </option>
+                        <?php endwhile; ?>
+                    </select>
+                </div>
+                
+                <div class="filter-group" style="display: flex; align-items: flex-end;">
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="checkbox" name="employee" <?= $filterEmployee ? 'checked' : '' ?> style="width: auto;">
+                        Employees Only
+                    </label>
+                </div>
+            </div>
+            
+            <div class="custom-range <?= $dateRange == 'custom' ? 'active' : '' ?>" id="customRange">
+                <div class="filter-group">
+                    <label>Start Date</label>
+                    <input type="date" name="start" value="<?= htmlspecialchars($customStart) ?>">
+                </div>
+                <div class="filter-group">
+                    <label>End Date</label>
+                    <input type="date" name="end" value="<?= htmlspecialchars($customEnd) ?>">
+                </div>
+            </div>
+            
+            <div class="filter-actions">
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-search"></i> Apply Filters
+                </button>
+                <a href="admin.php" class="btn btn-secondary">
+                    <i class="fas fa-undo"></i> Reset
+                </a>
+            </div>
+        </form>
+    </div>
+
+    <!-- Main Stats -->
     <div class="stats-row">
         <div class="stat-card">
             <div class="stat-top">
-                <span class="stat-label">Today's Visitors</span>
-                <span class="trend up"><i class="fas fa-arrow-up"></i> <?= htmlspecialchars($today_trend) ?></span>
+                <span class="stat-label">Total Visitors</span>
+                <i class="fas fa-users" style="color: var(--primary);"></i>
             </div>
-            <div class="stat-value"><?= number_format($today) ?></div>
-            <div class="stat-comparison">vs. yesterday</div>
-        </div>
-        
-        <div class="stat-card warning">
-            <div class="stat-top">
-                <span class="stat-label">This Week</span>
-                <span class="trend down"><i class="fas fa-arrow-down"></i> <?= htmlspecialchars($week_trend) ?></span>
+            <div class="stat-value"><?= number_format($stats['total']) ?></div>
+            <div style="color: var(--text-muted); font-size: 0.9rem;">
+                <?= ucfirst($dateRange) ?> period
             </div>
-            <div class="stat-value"><?= number_format($week) ?></div>
-            <div class="stat-comparison">vs. last week</div>
         </div>
         
         <div class="stat-card info">
             <div class="stat-top">
-                <span class="stat-label">This Month</span>
-                <span class="trend up"><i class="fas fa-arrow-up"></i> <?= htmlspecialchars($month_trend) ?></span>
+                <span class="stat-label">Active Now</span>
+                <i class="fas fa-signal" style="color: var(--info);"></i>
             </div>
-            <div class="stat-value"><?= number_format($month) ?></div>
-            <div class="stat-comparison">vs. last month</div>
+            <div class="stat-value">--</div>
+            <div style="color: var(--text-muted); font-size: 0.9rem;">Real-time</div>
         </div>
         
-        <div class="stat-card danger" style="cursor: pointer;" onclick="showToast('Date picker feature coming soon', 'info')">
+        <div class="stat-card success">
             <div class="stat-top">
-                <span class="stat-label">Custom Range</span>
-                <i class="far fa-calendar-alt" style="color: var(--text-muted);"></i>
+                <span class="stat-label">Unique Visitors</span>
+                <i class="fas fa-user-check" style="color: var(--success);"></i>
             </div>
-            <div class="stat-value" style="font-size: 1.2rem; margin-top: 8px;">Select Dates</div>
-            <div class="stat-comparison">Filter historical data</div>
+            <div class="stat-value">--</div>
+            <div style="color: var(--text-muted); font-size: 0.9rem;">Distinct count</div>
         </div>
     </div>
 
+    <!-- Breakdown Stats -->
+    <div class="breakdown-grid">
+        <div class="breakdown-card">
+            <h3><i class="fas fa-chart-pie"></i> By Reason</h3>
+            <?php 
+            $maxReason = 0;
+            $reasonData = [];
+            while($r = $stats['reasons']->fetch_assoc()) {
+                $reasonData[] = $r;
+                if ($r['count'] > $maxReason) $maxReason = $r['count'];
+            }
+            foreach($reasonData as $r): 
+                $percentage = $maxReason > 0 ? ($r['count'] / $maxReason * 100) : 0;
+            ?>
+            <div class="breakdown-item">
+                <div class="breakdown-label">
+                    <i class="fas fa-circle" style="color: var(--primary); font-size: 0.5rem;"></i>
+                    <?= htmlspecialchars($r['reason']) ?>
+                </div>
+                <div style="display: flex; align-items: center; gap: 15px;">
+                    <div class="breakdown-bar">
+                        <div class="breakdown-fill" style="width: <?= $percentage ?>%"></div>
+                    </div>
+                    <strong><?= $r['count'] ?></strong>
+                </div>
+            </div>
+            <?php endforeach; ?>
+            <?php if (empty($reasonData)): ?>
+                <p style="color: var(--text-muted); text-align: center; padding: 20px;">No data available</p>
+            <?php endif; ?>
+        </div>
+
+        <div class="breakdown-card">
+            <h3><i class="fas fa-university"></i> By College</h3>
+            <?php 
+            $maxCollege = 0;
+            $collegeData = [];
+            while($c = $stats['colleges']->fetch_assoc()) {
+                $collegeData[] = $c;
+                if ($c['count'] > $maxCollege) $maxCollege = $c['count'];
+            }
+            foreach($collegeData as $c): 
+                $percentage = $maxCollege > 0 ? ($c['count'] / $maxCollege * 100) : 0;
+            ?>
+            <div class="breakdown-item">
+                <div class="breakdown-label">
+                    <i class="fas fa-circle" style="color: var(--info); font-size: 0.5rem;"></i>
+                    <?= htmlspecialchars($c['college']) ?>
+                </div>
+                <div style="display: flex; align-items: center; gap: 15px;">
+                    <div class="breakdown-bar">
+                        <div class="breakdown-fill" style="width: <?= $percentage ?>%; background: var(--info);"></div>
+                    </div>
+                    <strong><?= $c['count'] ?></strong>
+                </div>
+            </div>
+            <?php endforeach; ?>
+            <?php if (empty($collegeData)): ?>
+                <p style="color: var(--text-muted); text-align: center; padding: 20px;">No data available</p>
+            <?php endif; ?>
+        </div>
+    </div>
+
+    <!-- Visitor Table -->
     <div class="table-section">
         <div class="table-ctrl">
-            <div class="table-title">
+            <div>
                 <h3>Visitor Records</h3>
-                <p>Real-time log of library entries</p>
+                <p style="color: var(--text-muted);">Showing filtered results</p>
             </div>
-            <div class="table-actions">
+            <div style="display: flex; gap: 12px;">
                 <button class="btn btn-secondary" onclick="refreshData()">
                     <i class="fas fa-sync-alt"></i> Refresh
                 </button>
-                <button class="btn btn-primary" onclick="exportPDF()">
-                    <i class="fas fa-file-export"></i> Export PDF
+                <button class="btn btn-primary" onclick="exportData()">
+                    <i class="fas fa-file-export"></i> Export
                 </button>
             </div>
         </div>
@@ -657,232 +702,101 @@ $month_trend = "+18%";
                 <thead>
                     <tr>
                         <th>Visitor</th>
-                        <th>Program</th>
+                        <th>Program/College</th>
                         <th>Reason</th>
+                        <th>Type</th>
+                        <th>Time</th>
                         <th>Status</th>
-                        <th>Action</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php
-                    try {
-                        $res = $conn->query("SELECT v.*, u.name, u.program, u.student_id, u.is_blocked 
-                                           FROM visitor_log v 
-                                           JOIN users u ON v.user_id = u.id 
-                                           ORDER BY v.timestamp DESC 
-                                           LIMIT 100");
-                        
-                        if ($res->num_rows === 0): ?>
-                            <tr>
-                                <td colspan="5" class="empty-state">
-                                    <i class="fas fa-inbox"></i>
-                                    <p>No visitor records found</p>
-                                </td>
-                            </tr>
-                        <?php else:
-                            while($r = $res->fetch_assoc()):
-                                $isBlocked = $r['is_blocked'];
-                                $initials = strtoupper(substr($r['name'], 0, 2));
+                    // Build query with same filters
+                    $whereConditions = ["1=1"];
+                    $params = [];
+                    $types = "";
+                    
+                    switch($dateRange) {
+                        case 'today': $whereConditions[] = "DATE(v.timestamp) = CURDATE()"; break;
+                        case 'week': $whereConditions[] = "YEARWEEK(v.timestamp) = YEARWEEK(NOW())"; break;
+                        case 'month': $whereConditions[] = "MONTH(v.timestamp) = MONTH(NOW()) AND YEAR(v.timestamp) = YEAR(NOW())"; break;
+                        case 'custom': 
+                            if ($customStart && $customEnd) {
+                                $whereConditions[] = "DATE(v.timestamp) BETWEEN ? AND ?";
+                                $params[] = $customStart; $params[] = $customEnd;
+                                $types .= "ss";
+                            }
+                            break;
+                    }
+                    
+                    if ($filterReason) { $whereConditions[] = "v.reason = ?"; $params[] = $filterReason; $types .= "s"; }
+                    if ($filterCollege) { $whereConditions[] = "u.college = ?"; $params[] = $filterCollege; $types .= "s"; }
+                    if ($filterEmployee) { $whereConditions[] = "u.is_employee = 1"; }
+                    
+                    $whereClause = implode(" AND ", $whereConditions);
+                    $query = "SELECT v.*, u.name, u.program, u.college, u.is_employee, u.is_blocked 
+                             FROM visitor_log v 
+                             JOIN users u ON v.user_id = u.id 
+                             WHERE $whereClause 
+                             ORDER BY v.timestamp DESC 
+                             LIMIT 100";
+                    
+                    $stmt = $conn->prepare($query);
+                    if (!empty($params)) $stmt->bind_param($types, ...$params);
+                    $stmt->execute();
+                    $res = $stmt->get_result();
+                    
+                    if ($res->num_rows === 0): ?>
+                        <tr>
+                            <td colspan="6" style="text-align: center; padding: 40px; color: var(--text-muted);">
+                                <i class="fas fa-inbox" style="font-size: 2rem; margin-bottom: 10px; display: block;"></i>
+                                No visitor records found for selected filters
+                            </td>
+                        </tr>
+                    <?php else:
+                        while($r = $res->fetch_assoc()):
+                            $initials = strtoupper(substr($r['name'], 0, 2));
+                            $userType = $r['is_employee'] ? 'Employee' : 'Student';
                     ?>
-                    <tr class="<?= $isBlocked ? 'restricted-row' : '' ?>" data-user-id="<?= (int)$r['user_id'] ?>">
+                    <tr>
                         <td>
                             <div class="user-cell">
                                 <div class="user-avatar"><?= htmlspecialchars($initials) ?></div>
-                                <div class="user-info">
+                                <div>
                                     <strong><?= htmlspecialchars($r['name']) ?></strong>
-                                    <small>ID: <?= htmlspecialchars($r['student_id']) ?></small>
                                 </div>
                             </div>
                         </td>
-                        <td><?= htmlspecialchars($r['program']) ?></td>
+                        <td><?= htmlspecialchars($r['college'] ?? $r['program'] ?? 'N/A') ?></td>
                         <td><?= htmlspecialchars($r['reason']) ?></td>
+                        <td><?= $userType ?></td>
+                        <td><?= date('M j, Y g:i A', strtotime($r['timestamp'])) ?></td>
                         <td>
-                            <span class="pill <?= $isBlocked ? 'pill-red' : 'pill-green' ?>">
-                                <?= $isBlocked ? '● Restricted' : '● Active' ?>
+                            <span class="pill <?= $r['is_blocked'] ? 'pill-red' : 'pill-green' ?>">
+                                <?= $r['is_blocked'] ? 'Blocked' : 'Active' ?>
                             </span>
                         </td>
-                        <td>
-                            <button class="btn-action <?= $isBlocked ? 'unblock' : 'block' ?>" 
-                                    onclick="toggleStatus(<?= (int)$r['user_id'] ?>, this)"
-                                    data-status="<?= $isBlocked ? 'blocked' : 'active' ?>">
-                                <i class="fas fa-<?= $isBlocked ? 'unlock' : 'ban' ?>"></i>
-                                <?= $isBlocked ? 'Unblock' : 'Block' ?>
-                            </button>
-                        </td>
                     </tr>
-                    <?php 
-                            endwhile;
-                        endif;
-                    } catch (Exception $e) {
-                        echo '<tr><td colspan="5" class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>Error loading data</p></td></tr>';
-                        error_log("Visitor table error: " . $e->getMessage());
-                    }
-                    ?>
+                    <?php endwhile; endif; ?>
                 </tbody>
             </table>
         </div>
     </div>
 </main>
 
-<div class="toast" id="toast">
-    <i class="fas fa-check-circle"></i>
-    <span id="toast-message">Operation successful</span>
-</div>
-
 <script>
-// Debounced search for better performance
-let searchTimeout;
-function filterTable() {
-    clearTimeout(searchTimeout);
-    searchTimeout = setTimeout(() => {
-        const q = document.getElementById("search").value.toLowerCase().trim();
-        const rows = document.querySelectorAll("tbody tr");
-        
-        rows.forEach(tr => {
-            if (tr.querySelector('.empty-state')) return;
-            const text = tr.innerText.toLowerCase();
-            if (text.includes(q)) {
-                tr.style.display = "";
-                tr.style.opacity = "1";
-            } else {
-                tr.style.display = "none";
-            }
-        });
-    }, 300);
-}
-
-// Toggle status with immediate UI update
-function toggleStatus(userId, btnElement) {
-    // Prevent double-clicks
-    if (btnElement.disabled) return;
-    
-    const row = btnElement.closest('tr');
-    const currentStatus = btnElement.dataset.status; // 'active' or 'blocked'
-    const newAction = currentStatus === 'active' ? 'block' : 'unblock';
-    
-    // Optimistic UI update - disable button immediately
-    btnElement.disabled = true;
-    btnElement.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
-    
-    // Create form data for POST request (more secure than GET)
-    const formData = new FormData();
-    formData.append('id', userId);
-    formData.append('csrf', '<?= $_SESSION['csrf_token'] ?? '' ?>');
-    
-    fetch('toggle_status.php', {
-        method: 'POST',
-        headers: {
-            'X-Requested-With': 'XMLHttpRequest'
-        },
-        body: formData
-    })
-    .then(response => {
-        if (!response.ok) {
-            throw new Error('Network response was not ok: ' + response.status);
-        }
-        return response.json();
-    })
-    .then(data => {
-        if (data.success) {
-            // Update UI immediately without page reload
-            updateRowUI(row, data.newStatus, btnElement);
-            showToast(data.message, 'success');
-        } else {
-            throw new Error(data.message || 'Operation failed');
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        showToast(error.message || 'Failed to update status', 'error');
-        // Revert button state
-        resetButtonState(btnElement, currentStatus);
-    });
-}
-
-function updateRowUI(row, isBlocked, btn) {
-    const pill = row.querySelector('.pill');
-    
-    // Update row styling
-    if (isBlocked) {
-        row.classList.add('restricted-row');
-        pill.className = 'pill pill-red';
-        pill.innerHTML = '● Restricted';
-        
-        btn.className = 'btn-action unblock';
-        btn.innerHTML = '<i class="fas fa-unlock"></i> Unblock';
-        btn.dataset.status = 'blocked';
-    } else {
-        row.classList.remove('restricted-row');
-        pill.className = 'pill pill-green';
-        pill.innerHTML = '● Active';
-        
-        btn.className = 'btn-action block';
-        btn.innerHTML = '<i class="fas fa-ban"></i> Block';
-        btn.dataset.status = 'active';
-    }
-    
-    btn.disabled = false;
-    
-    // Add a brief highlight animation
-    row.style.transition = 'background-color 0.5s';
-    const originalBg = isBlocked ? '#fff5f5' : '';
-    row.style.backgroundColor = '#d4edda';
-    setTimeout(() => {
-        row.style.backgroundColor = originalBg;
-    }, 500);
-}
-
-function resetButtonState(btn, status) {
-    btn.disabled = false;
-    if (status === 'active') {
-        btn.className = 'btn-action block';
-        btn.innerHTML = '<i class="fas fa-ban"></i> Block';
-    } else {
-        btn.className = 'btn-action unblock';
-        btn.innerHTML = '<i class="fas fa-unlock"></i> Unblock';
-    }
-}
-
-function showToast(message, type = 'success') {
-    const toast = document.getElementById('toast');
-    const toastMessage = document.getElementById('toast-message');
-    const icon = toast.querySelector('i');
-    
-    // Remove existing classes
-    toast.className = 'toast';
-    
-    // Set icon based on type
-    if (type === 'success') {
-        icon.className = 'fas fa-check-circle';
-        toast.style.background = '#27ae60';
-    } else if (type === 'error') {
-        icon.className = 'fas fa-exclamation-circle';
-        toast.style.background = '#e74c3c';
-    } else {
-        icon.className = 'fas fa-info-circle';
-        toast.style.background = '#3498db';
-    }
-    
-    toastMessage.textContent = message;
-    toast.classList.add('show');
-    
-    // Hide after 3 seconds
-    setTimeout(() => {
-        toast.classList.remove('show');
-    }, 3000);
+function toggleCustomRange() {
+    const select = document.getElementById('rangeSelect');
+    const customRange = document.getElementById('customRange');
+    customRange.classList.toggle('active', select.value === 'custom');
 }
 
 function refreshData() {
-    const btn = document.querySelector('.btn-secondary i');
-    btn.classList.add('fa-spin');
     location.reload();
 }
 
-function exportPDF() {
-    showToast('Preparing PDF export...', 'info');
-    setTimeout(() => {
-        showToast('PDF downloaded successfully', 'success');
-    }, 1500);
+function exportData() {
+    alert('Export functionality - Implement CSV/PDF generation here');
 }
 
 function logout() {
@@ -890,23 +804,6 @@ function logout() {
         window.location.href = 'logout.php';
     }
 }
-
-// Check for URL messages on page load
-window.addEventListener('DOMContentLoaded', () => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const success = urlParams.get('success');
-    const error = urlParams.get('error');
-    
-    if (success) {
-        showToast(decodeURIComponent(success), 'success');
-        // Clean URL
-        window.history.replaceState({}, document.title, window.location.pathname);
-    }
-    if (error) {
-        showToast('Error: ' + error, 'error');
-        window.history.replaceState({}, document.title, window.location.pathname);
-    }
-});
 </script>
 
 </body>

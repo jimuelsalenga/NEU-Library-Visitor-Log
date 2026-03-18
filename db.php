@@ -1,14 +1,110 @@
 <?php
-$conn = new mysqli("localhost", "root", "", "neu_library");
-if($conn->connect_error) die("DB Error");
+require_once 'vendor/autoload.php';
+$dotenv = Dotenv\Dotenv::createImmutable(__DIR__);
+$dotenv->load();
 
-// 1. SET session security settings FIRST
+// Session security MUST be set BEFORE session_start()
 ini_set('session.cookie_httponly', 1);
 ini_set('session.use_only_cookies', 1);
-ini_set('session.cookie_secure', 0); // Set to 1 if using HTTPS
+ini_set('session.cookie_secure', isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on');
+ini_set('session.cookie_samesite', 'Strict');
+ini_set('session.gc_maxlifetime', 3600);
+ini_set('session.cookie_lifetime', 0);
 
-// 2. THEN start the session if not already started
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
+}
+
+// Database connection
+$conn = new mysqli(
+    $_ENV['DB_HOST'], 
+    $_ENV['DB_USER'], 
+    $_ENV['DB_PASS'], 
+    $_ENV['DB_NAME']
+);
+
+if ($conn->connect_error) {
+    die("Database Connection Failed: " . $conn->connect_error);
+}
+
+$conn->set_charset("utf8mb4");
+
+/**
+ * RBAC Helper Functions
+ */
+function hasRole($role) {
+    return isset($_SESSION['user_roles']) && in_array($role, $_SESSION['user_roles']);
+}
+
+function isAdmin() {
+    return hasRole('admin');
+}
+
+function isUser() {
+    return hasRole('user');
+}
+
+function requireAuth() {
+    if (!isset($_SESSION['user_id'])) {
+        header("Location: index.php");
+        exit();
+    }
+}
+
+function requireAdmin() {
+    requireAuth();
+    if (!isAdmin()) {
+        header("Location: user-dashboard.php");
+        exit();
+    }
+}
+
+/**
+ * Get or refresh valid access token
+ */
+function getValidAccessToken($provider) {
+    if (!isset($_SESSION['access_token'])) {
+        return null;
+    }
+    
+    $token = new \League\OAuth2\Client\Token\AccessToken([
+        'access_token' => $_SESSION['access_token'],
+        'refresh_token' => $_SESSION['refresh_token'] ?? null,
+        'expires' => $_SESSION['token_expires'] ?? time() - 1
+    ]);
+    
+    if ($token->hasExpired() && isset($_SESSION['refresh_token'])) {
+        try {
+            $newToken = $provider->getAccessToken('refresh_token', [
+                'refresh_token' => $_SESSION['refresh_token']
+            ]);
+            
+            $_SESSION['access_token'] = $newToken->getToken();
+            if ($newToken->getRefreshToken()) {
+                $_SESSION['refresh_token'] = $newToken->getRefreshToken();
+            }
+            $_SESSION['token_expires'] = $newToken->getExpires();
+            
+            return $newToken;
+        } catch (Exception $e) {
+            // Token refresh failed, require re-login
+            return null;
+        }
+    }
+    
+    return $token;
+}
+
+/**
+ * Initialize Google OAuth Provider
+ */
+function getGoogleProvider() {
+    return new \League\OAuth2\Client\Provider\Google([
+        'clientId'     => $_ENV['GOOGLE_CLIENT_ID'],
+        'clientSecret' => $_ENV['GOOGLE_CLIENT_SECRET'],
+        'redirectUri'  => $_ENV['GOOGLE_REDIRECT_URI'],
+        'accessType'   => 'offline',
+        'prompt'       => 'consent select_account'
+    ]);
 }
 ?>
