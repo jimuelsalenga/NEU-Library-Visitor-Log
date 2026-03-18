@@ -1,5 +1,5 @@
 <?php
-// admin_login.php - Complete fixed version
+// admin_login.php - Fixed version
 include 'db.php';
 
 // If already logged in, redirect
@@ -17,8 +17,8 @@ if($_SERVER['REQUEST_METHOD'] == 'POST'){
     if(empty($u) || empty($p)) {
         $error = "Please enter username and password";
     } else {
-        // Use prepared statement
-        $stmt = $conn->prepare("SELECT id, username, password, user_id FROM admins WHERE username = ?");
+        // Simple query without user_id
+        $stmt = $conn->prepare("SELECT id, username, password FROM admins WHERE username = ?");
         $stmt->bind_param("s", $u);
         $stmt->execute();
         $res = $stmt->get_result();
@@ -26,13 +26,13 @@ if($_SERVER['REQUEST_METHOD'] == 'POST'){
         if($res->num_rows > 0){
             $admin = $res->fetch_assoc();
             
-            // Check password (supports both hashed and plaintext during migration)
+            // Check password (supports both hashed and plaintext)
             $passwordValid = false;
             
             if (password_verify($p, $admin['password'])) {
                 $passwordValid = true;
             } elseif (strlen($admin['password']) < 60 && $p === $admin['password']) {
-                // Plain text password detected - verify and rehash
+                // Plain text password - verify and rehash
                 $passwordValid = true;
                 $newHash = password_hash($p, PASSWORD_DEFAULT);
                 $updateStmt = $conn->prepare("UPDATE admins SET password = ? WHERE id = ?");
@@ -45,7 +45,6 @@ if($_SERVER['REQUEST_METHOD'] == 'POST'){
                 $_SESSION['admin_id'] = $admin['id'];
                 $_SESSION['admin_user'] = $admin['username'];
                 $_SESSION['user_name'] = $admin['username'];
-                $_SESSION['user_id'] = $admin['user_id'] ?? 0;
                 $_SESSION['user_roles'] = ['admin'];
                 
                 session_regenerate_id(true);
@@ -214,6 +213,19 @@ if($_SERVER['REQUEST_METHOD'] == 'POST'){
             transform: translateY(-2px);
             box-shadow: 0 8px 20px rgba(11, 93, 59, 0.3);
         }
+        
+        .back-link {
+            display: block;
+            text-align: center;
+            margin-top: 20px;
+            color: #666;
+            text-decoration: none;
+            font-size: 0.9rem;
+        }
+        
+        .back-link:hover {
+            color: #0B5D3B;
+        }
     </style>
 </head>
 <body>
@@ -259,6 +271,10 @@ if($_SERVER['REQUEST_METHOD'] == 'POST'){
                     <i class="fas fa-arrow-right"></i>
                 </button>
             </form>
+            
+            <a href="index.php" class="back-link">
+                <i class="fas fa-arrow-left"></i> Back to Check-in
+            </a>
         </div>
     </div>
 </body>
