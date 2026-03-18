@@ -165,19 +165,6 @@ $googleAvailable = file_exists(__DIR__ . '/vendor/autoload.php');
             height: 20px;
         }
         
-        /* Disabled Google button */
-        .google-btn.disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-            background: #f5f5f5;
-        }
-        
-        .google-btn.disabled:hover {
-            transform: none;
-            box-shadow: none;
-            border-color: #e1e8ed;
-        }
-        
         .notice-box {
             background: #fff3cd;
             color: #856404;
@@ -386,6 +373,41 @@ $googleAvailable = file_exists(__DIR__ . '/vendor/autoload.php');
             transform: none;
         }
         
+        /* Admin Button Styles */
+        .admin-section {
+            margin-top: 25px;
+            padding-top: 25px;
+            border-top: 1px solid #e1e8ed;
+            text-align: center;
+        }
+        
+        .admin-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: #666;
+            text-decoration: none;
+            font-size: 0.9rem;
+            font-weight: 600;
+            padding: 10px 20px;
+            border-radius: 20px;
+            transition: all 0.3s;
+            background: #f8f9fa;
+            border: 1px solid #e1e8ed;
+        }
+        
+        .admin-btn:hover {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(11, 93, 59, 0.2);
+        }
+        
+        .admin-btn i {
+            font-size: 0.9rem;
+        }
+        
         .loading-overlay {
             position: fixed;
             top: 0;
@@ -504,6 +526,13 @@ $googleAvailable = file_exists(__DIR__ . '/vendor/autoload.php');
             <span>Check In Now</span>
             <i class="fas fa-arrow-right"></i>
         </button>
+
+        <!-- Admin Access Button -->
+        <div class="admin-section">
+            <a href="admin_login.php" class="admin-btn">
+                <i class="fas fa-lock"></i> Admin Access
+            </a>
+        </div>
     </div>
 
     <div class="loading-overlay" id="loading">
