@@ -506,11 +506,11 @@ $colleges = $conn->query("SELECT DISTINCT college FROM users WHERE college IS NO
         <h2>NEU Library Admin Dashboard</h2>
     </div>
     <div class="header-actions">
-        <div class="admin-profile" onclick="logout()">
-            <div class="avatar-sm"><?= strtoupper(substr($_SESSION['user_name'], 0, 2)) ?></div>
-            <span><?= htmlspecialchars($_SESSION['user_name']) ?></span>
-            <i class="fas fa-chevron-down" style="color: var(--text-muted);"></i>
-        </div>
+    <div class="admin-profile" onclick="logout()">
+    <div class="avatar-sm"><?= strtoupper(substr($_SESSION['admin_user'] ?? $_SESSION['user_name'] ?? 'AD', 0, 2)) ?></div>
+    <span><?= htmlspecialchars($_SESSION['admin_user'] ?? $_SESSION['user_name'] ?? 'Admin') ?></span>
+    <i class="fas fa-chevron-down" style="color: var(--text-muted);"></i>
+</div>
     </div>
 </header>
 

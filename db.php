@@ -1,4 +1,11 @@
 <?php
+// PHP 8.0+ polyfill for str_ends_with (for older PHP versions)
+if (!function_exists('str_ends_with')) {
+    function str_ends_with($haystack, $needle) {
+        return $needle === '' || substr($haystack, -strlen($needle)) === $needle;
+    }
+}
+
 require_once 'vendor/autoload.php';
 $dotenv = Dotenv\Dotenv::createImmutable(__DIR__);
 $dotenv->load();
@@ -52,9 +59,12 @@ function requireAuth() {
 }
 
 function requireAdmin() {
-    requireAuth();
-    if (!isAdmin()) {
-        header("Location: user-dashboard.php");
+    // Support both old admin session and new RBAC system
+    $isAdmin = (isset($_SESSION['admin']) && $_SESSION['admin'] === true) || 
+               (isset($_SESSION['user_roles']) && in_array('admin', $_SESSION['user_roles']));
+    
+    if (!$isAdmin) {
+        header("Location: admin_login.php");
         exit();
     }
 }
