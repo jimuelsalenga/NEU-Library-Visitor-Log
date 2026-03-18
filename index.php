@@ -11,6 +11,9 @@ if (isset($_SESSION['user_id'])) {
     }
     exit();
 }
+
+// Check if Google OAuth is available
+$googleAvailable = file_exists(__DIR__ . '/vendor/autoload.php');
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -160,6 +163,36 @@ if (isset($_SESSION['user_id'])) {
         .google-icon {
             width: 20px;
             height: 20px;
+        }
+        
+        /* Disabled Google button */
+        .google-btn.disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            background: #f5f5f5;
+        }
+        
+        .google-btn.disabled:hover {
+            transform: none;
+            box-shadow: none;
+            border-color: #e1e8ed;
+        }
+        
+        .notice-box {
+            background: #fff3cd;
+            color: #856404;
+            padding: 12px 16px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            font-size: 0.85rem;
+            border-left: 4px solid #ffc107;
+        }
+        
+        .notice-box code {
+            background: rgba(0,0,0,0.1);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: monospace;
         }
         
         .divider {
@@ -411,6 +444,7 @@ if (isset($_SESSION['user_id'])) {
         <h1>NEU Library</h1>
         <p class="subtitle">Sign in to access library services</p>
 
+        <?php if ($googleAvailable): ?>
         <!-- Google Sign-In Button -->
         <a href="google-auth.php" class="google-btn">
             <svg class="google-icon" viewBox="0 0 24 24">
@@ -423,6 +457,12 @@ if (isset($_SESSION['user_id'])) {
         </a>
 
         <div class="divider"><span>OR</span></div>
+        <?php else: ?>
+        <!-- Google Sign-in disabled notice -->
+        <div class="notice-box">
+            <i class="fas fa-info-circle"></i> <strong>Google Sign-in disabled:</strong> Run <code>composer install</code> to enable OAuth.
+        </div>
+        <?php endif; ?>
 
         <div class="mode-selector">
             <div id="rfid" class="mode-box active" onclick="setMode('rfid')">

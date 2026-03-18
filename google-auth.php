@@ -1,20 +1,5 @@
 <?php
-include 'db.php';
-
-$provider = getGoogleProvider();
-
-// Generate authorization URL
-$authUrl = $provider->getAuthorizationUrl([
-    'scope' => [
-        'openid',
-        'email',
-        'profile'
-    ]
-]);
-
-// Store state to prevent CSRF
-$_SESSION['oauth2state'] = $provider->getState();
-
-header('Location: ' . $authUrl);
+// Google OAuth is disabled until Composer is installed
+header("Location: index.php?error=oauth_error&message=Google Sign-in requires Composer installation. Please use Manual Entry or RFID.");
 exit();
 ?>
