@@ -1,18 +1,16 @@
 <?php
+// logout.php - Complete version
 include 'db.php';
 
 // Revoke Google token if exists
 if (isset($_SESSION['access_token'])) {
     try {
-        $provider = getGoogleProvider();
-        // Attempt to revoke token
         $httpClient = new \GuzzleHttp\Client();
         $httpClient->post('https://oauth2.googleapis.com/revoke', [
             'form_params' => ['token' => $_SESSION['access_token']],
             'http_errors' => false
         ]);
     } catch (Exception $e) {
-        // Log error but continue logout
         error_log("Token revocation failed: " . $e->getMessage());
     }
 }

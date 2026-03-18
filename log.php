@@ -1,4 +1,7 @@
 <?php
+// log.php - Fixed version
+header('Content-Type: application/json');
+
 include 'db.php';
 
 // Validate request
@@ -12,7 +15,7 @@ $userId = intval($_POST['user_id']);
 $reason = trim($_POST['reason']);
 
 // Validate reason
-$validReasons = ['Reading', 'Researching', 'Computer Use', 'Meeting', 'Borrowing', 'Returning'];
+$validReasons = ['Reading', 'Researching', 'Computer Use', 'Meeting'];
 if (!in_array($reason, $validReasons)) {
     http_response_code(400);
     echo json_encode(["status" => "error", "message" => "Invalid reason"]);
@@ -46,6 +49,6 @@ if ($stmt->execute()) {
     echo json_encode(["status" => "success", "id" => $conn->insert_id]);
 } else {
     http_response_code(500);
-    echo json_encode(["status" => "error", "message" => "Database error"]);
+    echo json_encode(["status" => "error", "message" => "Database error: " . $conn->error]);
 }
 ?>

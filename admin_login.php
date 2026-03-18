@@ -1,4 +1,5 @@
 <?php
+// admin_login.php - Complete fixed version
 include 'db.php';
 
 // If already logged in, redirect
@@ -17,7 +18,7 @@ if($_SERVER['REQUEST_METHOD'] == 'POST'){
         $error = "Please enter username and password";
     } else {
         // Use prepared statement
-        $stmt = $conn->prepare("SELECT id, username, password FROM admins WHERE username = ?");
+        $stmt = $conn->prepare("SELECT id, username, password, user_id FROM admins WHERE username = ?");
         $stmt->bind_param("s", $u);
         $stmt->execute();
         $res = $stmt->get_result();
@@ -25,15 +26,28 @@ if($_SERVER['REQUEST_METHOD'] == 'POST'){
         if($res->num_rows > 0){
             $admin = $res->fetch_assoc();
             
-            // IMPORTANT: You need to hash passwords! 
-            // For now, direct comparison (insecure - fix this!)
-            // Change to: if(password_verify($p, $admin['password']))
-            if($p === $admin['password'] || password_verify($p, $admin['password'])) {
+            // Check password (supports both hashed and plaintext during migration)
+            $passwordValid = false;
+            
+            if (password_verify($p, $admin['password'])) {
+                $passwordValid = true;
+            } elseif (strlen($admin['password']) < 60 && $p === $admin['password']) {
+                // Plain text password detected - verify and rehash
+                $passwordValid = true;
+                $newHash = password_hash($p, PASSWORD_DEFAULT);
+                $updateStmt = $conn->prepare("UPDATE admins SET password = ? WHERE id = ?");
+                $updateStmt->bind_param("si", $newHash, $admin['id']);
+                $updateStmt->execute();
+            }
+            
+            if ($passwordValid) {
                 $_SESSION['admin'] = true;
                 $_SESSION['admin_id'] = $admin['id'];
                 $_SESSION['admin_user'] = $admin['username'];
+                $_SESSION['user_name'] = $admin['username'];
+                $_SESSION['user_id'] = $admin['user_id'] ?? 0;
+                $_SESSION['user_roles'] = ['admin'];
                 
-                // Regenerate session ID for security
                 session_regenerate_id(true);
                 
                 header("Location: admin.php");
@@ -227,16 +241,16 @@ if($_SERVER['REQUEST_METHOD'] == 'POST'){
                 <div class="input-group">
                     <label>Username</label>
                     <div class="input-wrapper">
-                        <input name="u" placeholder="Enter username" required autocomplete="username">
                         <i class="fas fa-user"></i>
+                        <input type="text" name="u" placeholder="Enter username" required autocomplete="username">
                     </div>
                 </div>
                 
                 <div class="input-group">
                     <label>Password</label>
                     <div class="input-wrapper">
-                        <input name="p" type="password" placeholder="••••••••" required autocomplete="current-password">
                         <i class="fas fa-lock"></i>
+                        <input type="password" name="p" placeholder="••••••••" required autocomplete="current-password">
                     </div>
                 </div>
                 

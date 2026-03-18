@@ -1,4 +1,17 @@
-<!-- Enhanced index.php with Google OAuth -->
+<?php
+// index.php - Complete fixed version
+include 'db.php';
+
+// Check if already logged in
+if (isset($_SESSION['user_id'])) {
+    if (isAdmin()) {
+        header("Location: admin.php");
+    } else {
+        header("Location: user-dashboard.php");
+    }
+    exit();
+}
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -526,8 +539,12 @@
                     body: `value=${encodeURIComponent(val)}`
                 });
                 
-                if (!loginRes.ok) throw new Error('Network error');
-                const userData = await loginRes.json();
+                let userData;
+                try {
+                    userData = await loginRes.json();
+                } catch (e) {
+                    throw new Error('Invalid response from server');
+                }
                 
                 if (userData.status !== "ok") {
                     throw new Error(userData.message || "Access Denied");
@@ -539,7 +556,16 @@
                     body: `user_id=${encodeURIComponent(userData.id)}&reason=${encodeURIComponent(currentReason)}`
                 });
                 
-                if (!logRes.ok) throw new Error('Failed to log visit');
+                let logData;
+                try {
+                    logData = await logRes.json();
+                } catch (e) {
+                    throw new Error('Failed to log visit');
+                }
+                
+                if (logData.status !== "success") {
+                    throw new Error(logData.message || "Failed to log visit");
+                }
 
                 await Swal.fire({
                     title: 'Welcome to NEU Library!',
@@ -554,7 +580,15 @@
                     backdrop: 'rgba(11, 93, 59, 0.2)'
                 });
                 
-                location.reload();
+                // Reset form
+                inputField.value = '';
+                document.querySelectorAll('.reason-btn').forEach(b => b.classList.remove('selected'));
+                currentReason = '';
+                isProcessing = false;
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '<span>Check In Now</span><i class="fas fa-arrow-right"></i>';
+                document.getElementById('loading').classList.remove('active');
+                inputField.focus();
 
             } catch (error) {
                 document.getElementById('loading').classList.remove('active');
@@ -595,7 +629,7 @@
                 case 'invalid_domain': message = "Only @neu.edu.ph emails are allowed"; break;
                 case 'account_blocked': message = "Your account has been blocked"; break;
                 case 'oauth_failed': message = "Google sign-in failed"; break;
-                case 'oauth_error': message = "Authentication error occurred"; break;
+                case 'oauth_error': message = urlParams.get('message') || "Authentication error occurred"; break;
             }
             Swal.fire({
                 icon: 'error',

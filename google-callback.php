@@ -1,18 +1,30 @@
 <?php
+// google-callback.php - Complete fixed version
 include 'db.php';
 
-$provider = getGoogleProvider();
+try {
+    $provider = getGoogleProvider();
+} catch (Exception $e) {
+    header("Location: index.php?error=oauth_error&message=" . urlencode($e->getMessage()));
+    exit();
+}
 
-// Check for errors
+// Check for errors from Google
 if (isset($_GET['error'])) {
     header("Location: index.php?error=oauth_error&message=" . urlencode($_GET['error']));
     exit();
 }
 
 // Validate state to prevent CSRF
-if (empty($_GET['state']) || ($_GET['state'] !== ($_SESSION['oauth2state'] ?? ''))) {
+if (empty($_GET['state']) || !isset($_SESSION['oauth2state']) || ($_GET['state'] !== $_SESSION['oauth2state'])) {
     unset($_SESSION['oauth2state']);
-    header("Location: index.php?error=oauth_error&message=Invalid state");
+    header("Location: index.php?error=oauth_error&message=Invalid state parameter");
+    exit();
+}
+
+// Check for authorization code
+if (empty($_GET['code'])) {
+    header("Location: index.php?error=oauth_error&message=No authorization code received");
     exit();
 }
 
@@ -25,7 +37,7 @@ try {
     // Get user details from Google
     $googleUser = $provider->getResourceOwner($token);
     $email = $googleUser->getEmail();
-    $name = $googleUser->getName();
+    $name = $googleUser->getName() ?? explode('@', $email)[0];
     $googleId = $googleUser->getId();
     
     // Verify email domain (only @neu.edu.ph allowed)
@@ -58,9 +70,12 @@ try {
         $userId = $user['id'];
     } else {
         // Create new user
-        $insert = $conn->prepare("INSERT INTO users (name, email, google_id, is_employee) VALUES (?, ?, ?, 0)");
+        $insert = $conn->prepare("INSERT INTO users (name, email, google_id, is_employee, is_blocked) VALUES (?, ?, ?, 0, 0)");
         $insert->bind_param("sss", $name, $email, $googleId);
-        $insert->execute();
+        
+        if (!$insert->execute()) {
+            throw new Exception("Failed to create user: " . $conn->error);
+        }
         $userId = $conn->insert_id;
     }
     
@@ -76,10 +91,12 @@ try {
     $_SESSION['token_expires'] = $token->getExpires();
     
     // Check if admin
-    $adminCheck = $conn->prepare("SELECT id FROM admins WHERE user_id = ?");
-    $adminCheck->bind_param("i", $userId);
+    $adminCheck = $conn->prepare("SELECT id FROM admins WHERE user_id = ? OR email = ?");
+    $adminCheck->bind_param("is", $userId, $email);
     $adminCheck->execute();
+    
     if ($adminCheck->get_result()->num_rows > 0) {
+        $_SESSION['admin'] = true;
         $_SESSION['user_roles'][] = 'admin';
         header("Location: admin.php");
     } else {
@@ -89,7 +106,7 @@ try {
     
 } catch (Exception $e) {
     error_log("OAuth Error: " . $e->getMessage());
-    header("Location: index.php?error=oauth_failed");
+    header("Location: index.php?error=oauth_failed&message=" . urlencode($e->getMessage()));
     exit();
 }
 ?>

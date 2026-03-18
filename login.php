@@ -1,24 +1,28 @@
 <?php
-// Prevent any accidental warnings/errors from leaking into the JSON output
-error_reporting(0);
-ob_start();
+// login.php - Fixed version
+header('Content-Type: application/json');
+
+// Prevent any output before headers
+if (ob_get_level()) {
+    ob_end_clean();
+}
 
 include 'db.php';
-
-// Clear any accidental output from db.php (like session warnings)
-ob_clean();
-
-header('Content-Type: application/json');
 
 if (!isset($_POST['value'])) {
     echo json_encode(["status" => "error", "message" => "No input provided"]);
     exit;
 }
 
-$value = $_POST['value'];
+$value = trim($_POST['value']);
+
+if (empty($value)) {
+    echo json_encode(["status" => "error", "message" => "Empty input provided"]);
+    exit;
+}
 
 // Use prepared statements for security
-$stmt = $conn->prepare("SELECT * FROM users WHERE student_id=? OR email=?");
+$stmt = $conn->prepare("SELECT id, name, program, is_blocked FROM users WHERE student_id = ? OR email = ?");
 $stmt->bind_param("ss", $value, $value);
 $stmt->execute();
 $res = $stmt->get_result();
@@ -35,9 +39,10 @@ if ($res->num_rows > 0) {
         "status" => "ok",
         "id" => $u['id'],
         "name" => $u['name'],
-        "program" => $u['program']
+        "program" => $u['program'] ?? 'N/A'
     ]);
 } else {
     echo json_encode(["status" => "error", "message" => "User not found. Please use Google Sign-in or register."]);
 }
 exit;
+?>

@@ -1,4 +1,5 @@
 <?php
+// user-dashboard.php - Complete fixed version
 include 'db.php';
 requireAuth();
 
@@ -8,6 +9,12 @@ $stmt = $conn->prepare("SELECT COUNT(*) as visits FROM visitor_log WHERE user_id
 $stmt->bind_param("i", $userId);
 $stmt->execute();
 $visitCount = $stmt->get_result()->fetch_assoc()['visits'];
+
+// Get recent visits
+$historyStmt = $conn->prepare("SELECT reason, timestamp FROM visitor_log WHERE user_id = ? ORDER BY timestamp DESC LIMIT 10");
+$historyStmt->bind_param("i", $userId);
+$historyStmt->execute();
+$history = $historyStmt->get_result();
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -152,6 +159,35 @@ $visitCount = $stmt->get_result()->fetch_assoc()['visits'];
             margin-bottom: 20px;
             color: var(--text);
         }
+        
+        .history-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .history-table th {
+            text-align: left;
+            padding: 12px;
+            border-bottom: 2px solid var(--bg);
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            text-transform: uppercase;
+        }
+        
+        .history-table td {
+            padding: 12px;
+            border-bottom: 1px solid var(--bg);
+        }
+        
+        .history-table tr:hover {
+            background: var(--bg);
+        }
+        
+        .no-data {
+            color: var(--text-muted);
+            text-align: center;
+            padding: 40px;
+        }
     </style>
 </head>
 <body>
@@ -164,8 +200,8 @@ $visitCount = $stmt->get_result()->fetch_assoc()['visits'];
         </div>
         <div class="user-menu">
             <div class="user-info">
-                <div class="user-name"><?= htmlspecialchars($_SESSION['user_name']) ?></div>
-                <div class="user-email"><?= htmlspecialchars($_SESSION['user_email']) ?></div>
+                <div class="user-name"><?= htmlspecialchars($_SESSION['user_name'] ?? 'User') ?></div>
+                <div class="user-email"><?= htmlspecialchars($_SESSION['user_email'] ?? '') ?></div>
             </div>
             <button class="logout-btn" onclick="logout()">
                 <i class="fas fa-sign-out-alt"></i> Logout
@@ -192,8 +228,28 @@ $visitCount = $stmt->get_result()->fetch_assoc()['visits'];
 
         <div class="history-section">
             <h2><i class="fas fa-history"></i> Recent Activity</h2>
-            <!-- User's recent visits would be listed here -->
-            <p style="color: var(--text-muted);">Your visit history is private and secure.</p>
+            <?php if ($history->num_rows > 0): ?>
+            <table class="history-table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Reason</th>
+                        <th>Time</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php while($row = $history->fetch_assoc()): ?>
+                    <tr>
+                        <td><?= date('M j, Y', strtotime($row['timestamp'])) ?></td>
+                        <td><?= htmlspecialchars($row['reason']) ?></td>
+                        <td><?= date('g:i A', strtotime($row['timestamp'])) ?></td>
+                    </tr>
+                    <?php endwhile; ?>
+                </tbody>
+            </table>
+            <?php else: ?>
+            <p class="no-data">No visits recorded yet.</p>
+            <?php endif; ?>
         </div>
     </div>
 
