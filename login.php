@@ -35,6 +35,12 @@ if ($res->num_rows > 0) {
         exit;
     }
 
+    // Set session for user
+    $_SESSION['user_id'] = $u['id'];
+    $_SESSION['user_name'] = $u['name'];
+    $_SESSION['user_email'] = $u['email'] ?? '';
+    $_SESSION['user_roles'] = ['user'];
+
     echo json_encode([
         "status" => "ok",
         "id" => $u['id'],

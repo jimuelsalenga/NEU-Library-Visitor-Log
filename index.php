@@ -134,7 +134,6 @@ $googleAvailable = file_exists(__DIR__ . '/vendor/autoload.php');
             font-size: 0.95rem;
         }
         
-        /* Google Sign-In Button */
         .google-btn {
             width: 100%;
             background: white;
@@ -373,7 +372,6 @@ $googleAvailable = file_exists(__DIR__ . '/vendor/autoload.php');
             transform: none;
         }
         
-        /* Admin Button Styles */
         .admin-section {
             margin-top: 25px;
             padding-top: 25px;
@@ -402,10 +400,6 @@ $googleAvailable = file_exists(__DIR__ . '/vendor/autoload.php');
             border-color: var(--primary);
             transform: translateY(-2px);
             box-shadow: 0 4px 12px rgba(11, 93, 59, 0.2);
-        }
-        
-        .admin-btn i {
-            font-size: 0.9rem;
         }
         
         .loading-overlay {
@@ -467,7 +461,6 @@ $googleAvailable = file_exists(__DIR__ . '/vendor/autoload.php');
         <p class="subtitle">Sign in to access library services</p>
 
         <?php if ($googleAvailable): ?>
-        <!-- Google Sign-In Button -->
         <a href="google-auth.php" class="google-btn">
             <svg class="google-icon" viewBox="0 0 24 24">
                 <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -480,7 +473,6 @@ $googleAvailable = file_exists(__DIR__ . '/vendor/autoload.php');
 
         <div class="divider"><span>OR</span></div>
         <?php else: ?>
-        <!-- Google Sign-in disabled notice -->
         <div class="notice-box">
             <i class="fas fa-info-circle"></i> <strong>Google Sign-in disabled:</strong> Run <code>composer install</code> to enable OAuth.
         </div>
@@ -527,7 +519,6 @@ $googleAvailable = file_exists(__DIR__ . '/vendor/autoload.php');
             <i class="fas fa-arrow-right"></i>
         </button>
 
-        <!-- Admin Access Button -->
         <div class="admin-section">
             <a href="admin_login.php" class="admin-btn">
                 <i class="fas fa-lock"></i> Admin Access
@@ -644,20 +635,13 @@ $googleAvailable = file_exists(__DIR__ . '/vendor/autoload.php');
                         <small style="color: #999;">Check-in successful at ${new Date().toLocaleTimeString()}</small>
                     </div>`,
                     icon: 'success',
-                    timer: 3000,
+                    timer: 2000,
                     showConfirmButton: false,
                     backdrop: 'rgba(11, 93, 59, 0.2)'
                 });
                 
-                // Reset form
-                inputField.value = '';
-                document.querySelectorAll('.reason-btn').forEach(b => b.classList.remove('selected'));
-                currentReason = '';
-                isProcessing = false;
-                submitBtn.disabled = false;
-                submitBtn.innerHTML = '<span>Check In Now</span><i class="fas fa-arrow-right"></i>';
-                document.getElementById('loading').classList.remove('active');
-                inputField.focus();
+                // Redirect to user dashboard after successful check-in
+                window.location.href = 'user-dashboard.php';
 
             } catch (error) {
                 document.getElementById('loading').classList.remove('active');
@@ -689,7 +673,6 @@ $googleAvailable = file_exists(__DIR__ . '/vendor/autoload.php');
             document.getElementById("userInput").focus();
         });
         
-        // Check for errors in URL
         const urlParams = new URLSearchParams(window.location.search);
         if (urlParams.has('error')) {
             const error = urlParams.get('error');

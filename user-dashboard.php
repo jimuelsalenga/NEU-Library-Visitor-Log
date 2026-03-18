@@ -1,7 +1,12 @@
 <?php
 // user-dashboard.php - Complete fixed version
 include 'db.php';
-requireAuth();
+
+// Check if user is logged in
+if (!isset($_SESSION['user_id'])) {
+    header("Location: index.php");
+    exit();
+}
 
 // Get user stats
 $userId = $_SESSION['user_id'];
@@ -188,6 +193,23 @@ $history = $historyStmt->get_result();
             text-align: center;
             padding: 40px;
         }
+        
+        .checkin-btn {
+            display: inline-block;
+            background: var(--primary);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 10px;
+            text-decoration: none;
+            font-weight: 600;
+            margin-top: 20px;
+            transition: all 0.3s;
+        }
+        
+        .checkin-btn:hover {
+            background: var(--primary-light);
+            transform: translateY(-2px);
+        }
     </style>
 </head>
 <body>
@@ -211,8 +233,11 @@ $history = $historyStmt->get_result();
 
     <div class="container">
         <div class="welcome-card">
-            <h1>Welcome to NEU Library!</h1>
+            <h1>Welcome, <?= htmlspecialchars($_SESSION['user_name'] ?? 'User') ?>!</h1>
             <p>We're glad to have you here. Enjoy your study session!</p>
+            <a href="index.php" class="checkin-btn">
+                <i class="fas fa-plus"></i> New Check-in
+            </a>
         </div>
 
         <div class="stats-grid">
