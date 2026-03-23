@@ -1,21 +1,21 @@
 <?php
-// index.php - NEU Library Visitor Log (Refined Version)
-session_start(); // CRITICAL: Required for checking login status and storing user data
+// index.php
+session_start();
 include 'db.php';
 
-// Check if already logged in - redirects to dashboard if session exists
-if (isset($_SESSION['user_id'])) {
-    // Assuming isAdmin() is defined in your db.php or a functions.php
-    if (function_exists('isAdmin') && isAdmin()) {
+// 1. SESSION CHECK - Redirect if already logged in
+if (isset($_SESSION['role'])) {
+    if ($_SESSION['role'] === 'admin') {
         header("Location: admin.php");
     } else {
-        header("Location: user-dashboard.php");
+        header("Location: dashboard.php"); 
     }
     exit();
 }
 
-// Check if Google OAuth library is present in the vendor folder
-$googleAvailable = file_exists(__DIR__ . '/vendor/autoload.php');
+// 2. GOOGLE AUTH SETUP (Ensure these match your google-auth.php config)
+// If you are using a separate google-auth.php file, this link is correct.
+$googleAuthUrl = "google-auth.php"; 
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -25,253 +25,276 @@ $googleAvailable = file_exists(__DIR__ . '/vendor/autoload.php');
     <title>NEU Library | Visitor Check-In</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         :root {
-            --primary: #0B5D3B;
-            --primary-light: #1a7a52;
-            --accent: #667eea;
-            --bg: #f0f2f5;
-            --card: #ffffff;
-            --text: #2c3e50;
-            --text-light: #7f8c8d;
-            --google-blue: #4285F4;
+            --primary-green: #1a7a52;
+            --bg-purple: #7b7cf1;
+            --text-dark: #2c3e50;
+            --text-muted: #7f8c8d;
         }
-        
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        
+
         body {
+            margin: 0; padding: 0;
             font-family: 'Segoe UI', system-ui, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background-color: var(--bg-purple);
+            display: flex; align-items: center; justify-content: center;
             min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-            position: relative;
-            overflow: hidden;
         }
-        
-        /* Animated Background Bubbles */
-        .bg-bubbles {
-            position: absolute;
-            top: 0; left: 0; width: 100%; height: 100%;
-            z-index: 0;
-        }
-        .bubble {
-            position: absolute;
-            bottom: -100px;
-            background: rgba(255,255,255,0.1);
-            border-radius: 50%;
-            animation: rise 15s infinite ease-in;
-        }
-        @keyframes rise {
-            0% { bottom: -100px; transform: translateX(0); }
-            50% { transform: translateX(100px); }
-            100% { bottom: 1080px; transform: translateX(-200px); }
-        }
-        
+
         .app-card {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(20px);
+            background: white;
             width: 100%;
-            max-width: 480px;
+            max-width: 440px;
             padding: 40px;
-            border-radius: 30px;
-            box-shadow: 0 25px 50px rgba(0,0,0,0.15);
-            position: relative;
-            z-index: 1;
-            animation: slideUp 0.6s ease;
+            border-radius: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.1);
+            text-align: center;
         }
-        @keyframes slideUp {
-            from { opacity: 0; transform: translateY(30px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        
-        .status-badge {
-            background: linear-gradient(135deg, #ffeaa7, #fdcb6e);
+
+        .status-pill {
+            background: #ffeaa7;
             color: #2d3436;
             display: inline-flex;
             align-items: center;
-            gap: 8px;
-            padding: 8px 16px;
+            padding: 5px 15px;
             border-radius: 20px;
-            font-weight: 700;
-            font-size: 0.75rem;
+            font-size: 11px;
+            font-weight: 800;
+            text-transform: uppercase;
             margin-bottom: 25px;
         }
 
-        h1 { font-size: 2rem; color: var(--text); margin-bottom: 8px; font-weight: 800; }
-        .subtitle { color: var(--text-light); margin-bottom: 30px; font-size: 0.95rem; }
-        
-        /* Buttons & Inputs */
+        h1 { font-size: 2rem; color: var(--text-dark); margin: 0; font-weight: 800; }
+        .subtitle { color: var(--text-muted); font-size: 0.95rem; margin-top: 5px; margin-bottom: 30px; }
+
         .google-btn {
             width: 100%;
+            border: 1px solid #eee;
             background: white;
-            color: #757575;
-            border: 2px solid #e1e8ed;
-            padding: 16px;
-            border-radius: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 12px;
-            text-decoration: none;
-            transition: all 0.3s;
+            padding: 14px;
+            border-radius: 15px;
+            display: flex; align-items: center; justify-content: center;
+            gap: 10px; text-decoration: none; color: #555;
+            font-weight: 600; margin-bottom: 20px;
+            transition: 0.2s;
+            box-sizing: border-box;
         }
-        .google-btn:hover { border-color: var(--google-blue); transform: translateY(-2px); }
+        .google-btn:hover { background: #f9f9f9; transform: translateY(-1px); }
 
-        .divider { display: flex; align-items: center; margin: 20px 0; color: var(--text-light); font-size: 0.85rem; }
-        .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: #e1e8ed; }
-        .divider span { padding: 0 15px; }
+        .divider { display: flex; align-items: center; margin: 20px 0; color: #ccc; font-size: 11px; text-transform: uppercase; }
+        .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: #eee; }
+        .divider span { padding: 0 10px; }
 
-        .mode-selector { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 25px; }
-        .mode-box { border: 2px solid #e1e8ed; padding: 15px; border-radius: 16px; cursor: pointer; text-align: center; transition: all 0.3s; }
-        .mode-box.active { border-color: var(--primary); background: #f1f9f6; color: var(--primary); }
+        .mode-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px; }
+        .mode-btn {
+            border: 2px solid #eee; border-radius: 15px; padding: 20px 10px;
+            cursor: pointer; transition: 0.2s; background: white;
+        }
+        .mode-btn i { font-size: 24px; color: var(--primary-green); margin-bottom: 8px; display: block; }
+        .mode-btn span { font-size: 11px; font-weight: 800; text-transform: uppercase; color: var(--text-muted); }
+        .mode-btn.active { border-color: var(--primary-green); background: #f0faf5; }
+        .mode-btn.active span { color: var(--primary-green); }
 
-        .input-wrapper { position: relative; margin-bottom: 20px; }
-        .input-wrapper i { position: absolute; left: 18px; top: 50%; transform: translateY(-50%); color: var(--text-light); }
-        input { width: 100%; padding: 16px 16px 16px 50px; border: 2px solid #e1e8ed; border-radius: 16px; font-size: 1rem; }
-        input:focus { outline: none; border-color: var(--primary); }
+        .input-box {
+            background: white; border: 2px solid #eee; border-radius: 15px;
+            padding: 15px; display: flex; align-items: center; gap: 15px;
+            margin-bottom: 25px;
+        }
+        .input-box i { color: #ccc; font-size: 18px; }
+        .input-box input { border: none; outline: none; width: 100%; font-size: 14px; font-weight: 600; }
 
-        .reason-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px; }
-        .reason-btn { background: white; border: 2px solid #e1e8ed; padding: 14px; border-radius: 14px; cursor: pointer; font-weight: 600; transition: all 0.3s; }
-        .reason-btn.selected { background: var(--primary); color: white; border-color: var(--primary); }
+        #reader { width: 100%; border-radius: 15px; overflow: hidden; display: none; margin-bottom: 15px; }
 
-        .btn-submit {
-            width: 100%;
-            background: linear-gradient(135deg, var(--primary), var(--primary-light));
-            color: white;
-            padding: 18px;
-            border-radius: 16px;
-            border: none;
-            font-weight: 700;
-            cursor: pointer;
-            margin-top: 25px;
-            box-shadow: 0 8px 25px rgba(11, 93, 59, 0.3);
+        .section-label { text-align: left; font-size: 11px; font-weight: 800; color: var(--text-muted); text-transform: uppercase; margin-bottom: 10px; }
+        .reason-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .reason-btn {
+            border: 1px solid #eee; border-radius: 12px; padding: 12px;
+            background: white; cursor: pointer; display: flex; align-items: center;
+            gap: 10px; font-size: 13px; font-weight: 600; color: var(--text-dark);
+            transition: 0.2s;
+        }
+        .reason-btn i { color: var(--primary-green); }
+        .reason-btn.selected { border-color: var(--primary-green); background: #f0faf5; }
+
+        .btn-checkin {
+            width: 100%; background: var(--primary-green); color: white;
+            border: none; border-radius: 15px; padding: 18px;
+            font-weight: 700; margin-top: 25px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center; gap: 10px;
+            font-size: 15px; box-shadow: 0 4px 15px rgba(26, 122, 82, 0.3);
         }
 
-        .loading-overlay {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(255,255,255,0.8);
-            display: none; align-items: center; justify-content: center; z-index: 1000;
+        .admin-link { 
+            display: inline-block; 
+            margin-top: 25px; 
+            color: #777; 
+            text-decoration: none; 
+            font-size: 12px; 
+            font-weight: 600; 
+            padding: 8px 15px; 
+            border: 1px solid #eee; 
+            border-radius: 10px; 
+            transition: 0.2s;
         }
-        .loading-overlay.active { display: flex; }
-        .spinner { width: 50px; height: 50px; border: 4px solid #f3f3f3; border-top: 4px solid var(--primary); border-radius: 50%; animation: spin 1s linear infinite; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .admin-link:hover { background: #eee; color: #333; }
     </style>
 </head>
 <body>
-    <div class="bg-bubbles">
-        <?php for($i=0; $i<6; $i++): ?>
-            <div class="bubble" style="left: <?= $i*15 ?>%; width: <?= rand(30,60) ?>px; height: <?= rand(30,60) ?>px; animation-delay: <?= $i ?>s;"></div>
-        <?php endfor; ?>
-    </div>
 
-    <div class="app-card">
-        <div class="status-badge">CAMPUS ACCESS ACTIVE</div>
-        <h1>NEU Library</h1>
-        <p class="subtitle">Sign in to access library services</p>
+<div class="app-card">
+    <div class="status-pill">● CAMPUS ACCESS ACTIVE</div>
+    <h1>NEU Library</h1>
+    <p class="subtitle">Sign in to access library services</p>
 
-        <?php if ($googleAvailable): ?>
-            <a href="google-auth.php" class="google-btn">
-                <img src="https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg" width="20" alt="G">
-                Sign in with Google
-            </a>
-            <div class="divider"><span>OR SCAN ID</span></div>
-        <?php else: ?>
-            <div style="background: #fff3cd; color: #856404; padding: 10px; border-radius: 10px; font-size: 0.8rem; margin-bottom: 15px;">
-                <i class="fas fa-exclamation-triangle"></i> Google Login disabled. Run <code>composer install</code>.
-            </div>
-        <?php endif; ?>
+    <a href="<?= $googleAuthUrl ?>" class="google-btn">
+        <img src="https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg" width="18" alt="G">
+        Sign in with @neu.edu.ph
+    </a>
 
-        <div class="mode-selector">
-            <div id="rfid" class="mode-box active" onclick="setMode('rfid')"><i class="fas fa-id-card"></i><br>RFID</div>
-            <div id="manual" class="mode-box" onclick="setMode('manual')"><i class="fas fa-keyboard"></i><br>Manual</div>
+    <div class="divider"><span>OR VISITOR LOG</span></div>
+
+    <div class="mode-grid">
+        <div class="mode-btn active" id="qr-tab" onclick="switchMode('qr')">
+            <i class="fas fa-id-card"></i>
+            <span>RFID SCAN</span>
         </div>
-
-        <div class="input-wrapper">
-            <i class="fas fa-id-card" id="inputIcon"></i>
-            <input type="text" id="userInput" placeholder="Scan ID or Enter Student ID" autofocus>
-        </div>
-
-        <label style="font-size: 0.8rem; font-weight: 700; color: var(--text-light);">REASON FOR VISIT</label>
-        <div class="reason-grid">
-            <button class="reason-btn" onclick="setReason(this, 'Reading')">Reading</button>
-            <button class="reason-btn" onclick="setReason(this, 'Researching')">Research</button>
-            <button class="reason-btn" onclick="setReason(this, 'Computer Use')">Computer</button>
-            <button class="reason-btn" onclick="setReason(this, 'Meeting')">Meeting</button>
-        </div>
-
-        <button class="btn-submit" onclick="doCheckin()" id="submitBtn">
-            Check In Now <i class="fas fa-arrow-right"></i>
-        </button>
-
-        <div style="text-align: center; margin-top: 20px;">
-            <a href="admin_login.php" style="color: #666; text-decoration: none; font-size: 0.85rem;">Admin Access</a>
+        <div class="mode-btn" id="manual-tab" onclick="switchMode('manual')">
+            <i class="fas fa-keyboard"></i>
+            <span>MANUAL ENTRY</span>
         </div>
     </div>
 
-    <div class="loading-overlay" id="loading"><div class="spinner"></div></div>
+    <div id="reader"></div>
 
-    <script>
-        let currentReason = "";
-        let currentMode = "rfid";
+    <div class="input-box">
+        <i class="fas fa-id-card"></i>
+        <input type="text" id="userInput" placeholder="Scan ID or Enter Student ID" autofocus>
+    </div>
 
-        function setMode(mode) {
-            currentMode = mode;
-            document.querySelectorAll('.mode-box').forEach(b => b.classList.remove('active'));
-            document.getElementById(mode).classList.add('active');
-            document.getElementById("userInput").focus();
+    <div class="section-label">REASON FOR VISIT</div>
+    <div class="reason-grid">
+        <div class="reason-btn" onclick="selectReason(this, 'Reading')"><i class="fas fa-book"></i> Reading</div>
+        <div class="reason-btn" onclick="selectReason(this, 'Researching')"><i class="fas fa-search"></i> Researching</div>
+        <div class="reason-btn" onclick="selectReason(this, 'Computer Use')"><i class="fas fa-desktop"></i> Computer Use</div>
+        <div class="reason-btn" onclick="selectReason(this, 'Meeting')"><i class="fas fa-users"></i> Meeting</div>
+    </div>
+
+    <button class="btn-checkin" onclick="processCheckin()">
+        Check In Now <i class="fas fa-arrow-right"></i>
+    </button>
+
+    <a href="admin_login.php" class="admin-link"><i class="fas fa-lock"></i> Admin Access</a>
+</div>
+
+<script>
+    window.onload = function() {
+        const urlParams = new URLSearchParams(window.location.search);
+        
+        // Handle unauthorized or domain errors
+        if (urlParams.get('error') === 'invalid_domain') {
+            Swal.fire({
+                icon: 'error',
+                title: 'Invalid Account',
+                text: 'Please use your official @neu.edu.ph email to sign in.',
+                confirmButtonColor: '#1a7a52'
+            });
+        } else if (urlParams.get('error') === 'unauthorized') {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Access Denied',
+                text: 'You do not have permission to view that page.',
+                confirmButtonColor: '#1a7a52'
+            });
         }
 
-        function setReason(btn, reason) {
-            document.querySelectorAll('.reason-btn').forEach(b => b.classList.remove('selected'));
-            btn.classList.add('selected');
-            currentReason = reason;
+        // Handle Logout success
+        if (urlParams.get('msg') === 'logged_out') {
+            Swal.fire({
+                icon: 'success',
+                title: 'Logged Out',
+                text: 'You have been successfully signed out.',
+                timer: 2000,
+                showConfirmButton: false
+            });
+        }
+    };
+
+    let currentReason = "";
+    let scannerActive = false;
+    let html5QrCode = new Html5Qrcode("reader");
+
+    function switchMode(mode) {
+        document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+        const qrTab = document.getElementById('qr-tab');
+        const manualTab = document.getElementById('manual-tab');
+        const readerDiv = document.getElementById('reader');
+
+        if (mode === 'qr') {
+            qrTab.classList.add('active');
+            readerDiv.style.display = "block";
+            startScanner();
+        } else {
+            manualTab.classList.add('active');
+            readerDiv.style.display = "none";
+            stopScanner();
+            document.getElementById('userInput').focus();
+        }
+    }
+
+    function selectReason(element, reason) {
+        document.querySelectorAll('.reason-btn').forEach(b => b.classList.remove('selected'));
+        element.classList.add('selected');
+        currentReason = reason;
+    }
+
+    async function startScanner() {
+        if (scannerActive) return;
+        try {
+            await html5QrCode.start(
+                { facingMode: "user" }, 
+                { fps: 10, qrbox: { width: 250, height: 250 } },
+                (decodedText) => {
+                    document.getElementById('userInput').value = decodedText;
+                    stopScanner();
+                    Swal.fire({ icon: 'success', title: 'ID Detected', timer: 1000, showConfirmButton: false });
+                }
+            );
+            scannerActive = true;
+        } catch (err) { console.error(err); }
+    }
+
+    function stopScanner() {
+        if (scannerActive) {
+            html5QrCode.stop();
+            scannerActive = false;
+        }
+    }
+
+    async function processCheckin() {
+        const idVal = document.getElementById('userInput').value.trim();
+        if (!idVal || !currentReason) {
+            return Swal.fire({ icon: 'warning', text: 'Please scan/enter ID and select a reason.' });
         }
 
-        async function doCheckin() {
-            const val = document.getElementById("userInput").value.trim();
-            if (!val || !currentReason) {
-                return Swal.fire({ icon: 'warning', title: 'Wait!', text: 'Please provide your ID and a reason.' });
+        try {
+            const response = await fetch("process-checkin.php", {
+                method: "POST",
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                body: `id=${encodeURIComponent(idVal)}&reason=${encodeURIComponent(currentReason)}`
+            });
+            const data = await response.json();
+            if (data.status === "success") {
+                Swal.fire({ icon: 'success', title: 'Check-in Successful', text: data.message });
+                document.getElementById('userInput').value = "";
+            } else {
+                Swal.fire({ icon: 'error', text: data.message });
             }
-
-            document.getElementById('loading').classList.add('active');
-
-            try {
-                // 1. Verify User
-                const loginRes = await fetch("login.php", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-                    body: `value=${encodeURIComponent(val)}`
-                });
-                const userData = await loginRes.json();
-                if (userData.status !== "ok") throw new Error(userData.message);
-
-                // 2. Log Visit
-                const logRes = await fetch("log.php", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-                    body: `user_id=${encodeURIComponent(userData.id)}&reason=${encodeURIComponent(currentReason)}`
-                });
-                const logData = await logRes.json();
-                if (logData.status !== "success") throw new Error(logData.message);
-
-                await Swal.fire({ icon: 'success', title: 'Welcome!', text: `Check-in successful for ${userData.name}`, timer: 2000, showConfirmButton: false });
-                window.location.href = 'user-dashboard.php';
-
-            } catch (error) {
-                document.getElementById('loading').classList.remove('active');
-                Swal.fire({ icon: 'error', title: 'Access Denied', text: error.message });
-            }
+        } catch (err) {
+            Swal.fire({ icon: 'error', text: 'Server error. Please try again.' });
         }
+    }
+</script>
 
-        // Handle Enter Key
-        document.getElementById("userInput").addEventListener("keypress", (e) => {
-            if (e.key === "Enter") doCheckin();
-        });
-    </script>
 </body>
 </html>

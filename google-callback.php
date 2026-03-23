@@ -1,67 +1,87 @@
 <?php
-require_once 'db.php';
+// google-callback.php
 require_once 'vendor/autoload.php';
+require_once 'db.php'; // This already has session_start()
 
-// 1. LOAD ENV
-$dotenv = Dotenv\Dotenv::createImmutable(__DIR__);
-$dotenv->load();
+try {
+    $dotenv = Dotenv\Dotenv::createImmutable(__DIR__);
+    $dotenv->load();
+} catch (Exception $e) {
+    // If .env is missing, we use hardcoded values or exit gracefully
+}
 
-// 2. GOOGLE SETUP
 $client = new Google_Client();
-$client->setClientId($_ENV['GOOGLE_CLIENT_ID']);
-$client->setClientSecret($_ENV['GOOGLE_CLIENT_SECRET']);
+$client->setClientId($_ENV['GOOGLE_CLIENT_ID'] ?? 'YOUR_CLIENT_ID');
+$client->setClientSecret($_ENV['GOOGLE_CLIENT_SECRET'] ?? 'YOUR_CLIENT_SECRET');
 $client->setRedirectUri('http://localhost/neu-library/google-callback.php');
 
 if (isset($_GET['code'])) {
     $token = $client->fetchAccessTokenWithAuthCode($_GET['code']);
+    
+    if (isset($token['error'])) {
+        header("Location: index.php?error=auth_failed");
+        exit();
+    }
+
     $client->setAccessToken($token);
     $google_oauth = new Google_Service_Oauth2($client);
     $google_account_info = $google_oauth->userinfo->get();
     
-    $email = strtolower($google_account_info->email);
+    $email = strtolower(trim($google_account_info->email));
     $name = $google_account_info->name;
     $google_id = $google_account_info->id;
 
-    // --- CRITICAL: CLEAR OLD DATA ---
-    session_unset(); 
+    // --- 1. DOMAIN LOCKDOWN ---
+    $allowed_domain = 'neu.edu.ph';
+    $user_domain = substr(strrchr($email, "@"), 1);
 
-    // 3. SET NEW SESSION
-    $_SESSION['user_id'] = $google_id;
-    $_SESSION['user_name'] = $name;
-    $_SESSION['user_email'] = $email;
+    if ($user_domain !== $allowed_domain) {
+        session_unset();
+        session_destroy();
+        header("Location: index.php?error=invalid_domain");
+        exit();
+    }
 
-    // 4. DEFINE ADMINS
-    $admin_emails = ['admin@neu.edu.ph', 'jimuel.salenga@neu.edu.ph']; 
+    // --- 2. SESSION REFRESH ---
+    session_regenerate_id(true); 
 
-    // 5. DATABASE CHECK
+    // --- 3. DATABASE CHECK ---
     $stmt = $conn->prepare("SELECT program, college, role FROM users WHERE google_id = ?");
     $stmt->bind_param("s", $google_id);
     $stmt->execute();
     $user_data = $stmt->get_result()->fetch_assoc();
 
-    // 6. THE REDIRECT "FORK"
+    // --- 4. ROLE & REDIRECTION LOGIC ---
+    $admin_emails = ['admin@neu.edu.ph', 'jcesperanza@neu.edu.ph']; 
+
     if (in_array($email, $admin_emails)) {
+        // ADMIN FLOW
+        $_SESSION['user_id'] = $google_id;
         $_SESSION['role'] = 'admin';
-        header("Location: admin.php");
+        $_SESSION['admin'] = true; // Match admin_login.php key
+        $_SESSION['admin_user'] = $name; 
+        header("Location: admin.php?msg=welcome_admin");
         exit();
     } else {
+        // STUDENT FLOW
+        $_SESSION['user_id'] = $google_id;
         $_SESSION['role'] = 'student';
+        $_SESSION['user_name'] = $name;
+        $_SESSION['user_email'] = $email;
         
-        // If they don't exist in DB, insert them
         if (!$user_data) {
             $ins = $conn->prepare("INSERT INTO users (google_id, name, email, role) VALUES (?, ?, ?, 'student')");
             $ins->bind_param("sss", $google_id, $name, $email);
             $ins->execute();
-            header("Location: user-details.php");
-            exit();
-        }
-
-        // Check if profile is incomplete
-        if (empty($user_data['program']) || empty($user_data['college'])) {
+            header("Location: user-details.php?msg=new_account");
+        } elseif (empty($user_data['program']) || empty($user_data['college'])) {
             header("Location: user-details.php");
         } else {
-            header("Location: dashboard.php");
+            header("Location: dashboard.php?msg=welcome_user");
         }
         exit();
     }
+} else {
+    header("Location: index.php");
+    exit();
 }
