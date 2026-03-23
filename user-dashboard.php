@@ -7,13 +7,13 @@ $userId = $_SESSION['user_id'];
 
 // Get user stats
 $stmt = $conn->prepare("SELECT COUNT(*) as visits FROM visitor_log WHERE user_id = ?");
-$stmt->bind_param("i", $userId);
+$stmt->bind_param("s", $userId); // Changed to "s" if your Google ID is a string
 $stmt->execute();
 $visitCount = $stmt->get_result()->fetch_assoc()['visits'];
 
-// Get recent visits (Improved: joining with programs if you store them)
+// Get recent visits
 $historyStmt = $conn->prepare("SELECT reason, timestamp, program FROM visitor_log WHERE user_id = ? ORDER BY timestamp DESC LIMIT 10");
-$historyStmt->bind_param("i", $userId);
+$historyStmt->bind_param("s", $userId);
 $historyStmt->execute();
 $history = $historyStmt->get_result();
 ?>
@@ -28,6 +28,10 @@ $history = $historyStmt->get_result();
         :root { --primary: #0B5D3B; --primary-light: #1a7a52; --bg: #f0f2f5; }
         body { font-family: 'Segoe UI', sans-serif; background: var(--bg); margin: 0; }
         .navbar { background: #fff; padding: 15px 40px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
+        
+        /* Added style for the new logo */
+        .nav-logo { height: 40px; width: auto; object-fit: contain; }
+
         .container { max-width: 900px; margin: 40px auto; padding: 0 20px; }
         .welcome-hero { background: linear-gradient(135deg, var(--primary), var(--primary-light)); color: white; padding: 40px; border-radius: 24px; text-align: center; margin-bottom: 30px; }
         .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 30px; }
@@ -43,8 +47,9 @@ $history = $historyStmt->get_result();
 <body>
 
 <nav class="navbar">
-    <div style="display:flex; align-items:center; gap:10px; color:var(--primary); font-weight:bold;">
-        <i class="fas fa-book-reader fa-lg"></i> NEU LIBRARY
+    <div style="display:flex; align-items:center; gap:12px; color:var(--primary); font-weight:bold; font-size: 1.2rem;">
+        <img src="assets/neu-logo.png" alt="NEU Logo" class="nav-logo"> 
+        NEU LIBRARY
     </div>
     <div style="display:flex; align-items:center; gap:15px;">
         <span style="font-weight:600;"><?= htmlspecialchars($_SESSION['user_name']) ?></span>
