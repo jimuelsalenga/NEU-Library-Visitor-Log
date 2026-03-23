@@ -1,9 +1,9 @@
 <?php
-// logout.php
 session_start();
-session_unset();
-session_destroy();
+session_unset(); // Removes all session variables
+session_destroy(); // Destroys the session entirely
 
-// Redirect back to the admin login page
-header("Location: admin_login.php");
+// THIS LINE is what determines the route:
+header("Location: index.php?logout=success");
 exit();
+?>
