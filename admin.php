@@ -129,10 +129,9 @@ $totalAllTime = $allTimeRes->fetch_assoc()['total'] ?? 0;
                 <?php
                 // LEFT JOIN links visitor_log (v) with users (u)
                 $sql = "SELECT v.user_id, v.reason, v.timestamp, u.name as student_name, u.college 
-                        FROM visitor_log v 
-                        LEFT JOIN users u ON v.user_id = u.id 
-                        ORDER BY v.timestamp DESC LIMIT 10";
-                
+                FROM visitor_log v 
+                LEFT JOIN users u ON v.user_id = u.id 
+                ORDER BY v.timestamp DESC LIMIT 10";
                 $result = $conn->query($sql);
 
                 if ($result && $result->num_rows > 0):
