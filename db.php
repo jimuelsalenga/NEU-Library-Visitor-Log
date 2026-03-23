@@ -15,6 +15,13 @@ if ($conn->connect_error) {
     die("Connection failed: " . $conn->connect_error);
 }
 
+function requireAdmin() {
+    if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'admin') {
+        // If not an admin, kick them back to the login page
+        header("Location: index.php?error=unauthorized");
+        exit();
+    }
+}
 // Helper function for protected pages
 function requireAuth() {
     if (!isset($_SESSION['user_id'])) {

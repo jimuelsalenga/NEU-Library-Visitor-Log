@@ -3,6 +3,9 @@
 require_once 'db.php';
 require_once 'vendor/autoload.php';
 
+$dotenv = Dotenv\Dotenv::createImmutable(__DIR__);
+$dotenv->load();
+
 $clientID = $_ENV['GOOGLE_CLIENT_ID'];
 $clientSecret = $_ENV['GOOGLE_CLIENT_SECRET'];
 $redirectUri = 'http://localhost/neu-library/google-callback.php';
