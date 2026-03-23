@@ -1,7 +1,16 @@
 <?php
-// db.php - No Composer Required Version
+// db.php - Refined Session & Connection Logic
 
-// Load .env file manually
+// 1. SESSION SECURITY (Must come before session_start)
+if (session_status() === PHP_SESSION_NONE) {
+    ini_set('session.cookie_httponly', 1);
+    ini_set('session.use_only_cookies', 1);
+    ini_set('session.cookie_secure', false); // Set to true if using HTTPS
+    ini_set('session.cookie_samesite', 'Strict');
+    session_start();
+}
+
+// 2. Load .env file manually
 function loadEnv($path) {
     if (!file_exists($path)) return;
     
@@ -26,27 +35,9 @@ function loadEnv($path) {
     }
 }
 
-// Load environment variables
 loadEnv(__DIR__ . '/.env');
 
-// PHP 8.0+ polyfill
-if (!function_exists('str_ends_with')) {
-    function str_ends_with($haystack, $needle) {
-        return $needle === '' || substr($haystack, -strlen($needle)) === $needle;
-    }
-}
-
-// Session security
-ini_set('session.cookie_httponly', 1);
-ini_set('session.use_only_cookies', 1);
-ini_set('session.cookie_secure', false);
-ini_set('session.cookie_samesite', 'Strict');
-
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
-
-// Database connection
+// 3. Database connection
 $dbHost = $_ENV['DB_HOST'] ?? 'localhost';
 $dbUser = $_ENV['DB_USER'] ?? 'root';
 $dbPass = $_ENV['DB_PASS'] ?? '';
@@ -60,6 +51,7 @@ if ($conn->connect_error) {
 
 $conn->set_charset("utf8mb4");
 
+// 4. Helper Functions
 function hasRole($role) {
     return isset($_SESSION['user_roles']) && is_array($_SESSION['user_roles']) && in_array($role, $_SESSION['user_roles']);
 }
@@ -82,7 +74,8 @@ function requireAdmin() {
     }
 }
 
+// Placeholder for Google Provider
 function getGoogleProvider() {
-    throw new Exception("Google OAuth requires Composer. Run: composer install");
+    throw new Exception("Google OAuth requires Composer. Run: composer require google/apiclient");
 }
 ?>
