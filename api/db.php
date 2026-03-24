@@ -20,16 +20,15 @@ try {
     
     // Create a PDO connection
     $pdo = new PDO($dsn, $user, $pass, [
-        PDO::ATTR_ERRMODE            => PDO::ATTR_ERRMODE_EXCEPTION,
+        PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION, // Fixed typo
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
         PDO::ATTR_EMULATE_PREPARES   => false,
     ]);
 
-    // For compatibility with your existing code that might use $conn
+    // For compatibility with your existing code
     $conn = $pdo; 
 
 } catch (PDOException $e) {
-    // Error handling (logged silently in production)
     error_log("Connection failed: " . $e->getMessage());
     die("Database connection error. Please check back later.");
 }
