@@ -1,45 +1,29 @@
 <?php
-// login.php - Fixed version
+// login.php
 header('Content-Type: application/json');
+require_once 'db.php';
 
-// Prevent any output before headers
-if (ob_get_level()) {
-    ob_end_clean();
-}
-
-include 'db.php';
-
-if (!isset($_POST['value'])) {
-    echo json_encode(["status" => "error", "message" => "No input provided"]);
-    exit;
-}
-
-$value = trim($_POST['value']);
+$value = trim($_POST['value'] ?? '');
 
 if (empty($value)) {
-    echo json_encode(["status" => "error", "message" => "Empty input provided"]);
+    echo json_encode(["status" => "error", "message" => "Input required"]);
     exit;
 }
 
-// Use prepared statements for security
-$stmt = $conn->prepare("SELECT id, name, program, is_blocked FROM users WHERE student_id = ? OR email = ?");
-$stmt->bind_param("ss", $value, $value);
-$stmt->execute();
-$res = $stmt->get_result();
+// PDO query for Student ID or Email
+$stmt = $conn->prepare("SELECT id, name, program, is_blocked, email FROM users WHERE student_id = :val OR email = :val");
+$stmt->execute(['val' => $value]);
+$u = $stmt->fetch();
 
-if ($res->num_rows > 0) {
-    $u = $res->fetch_assoc();
-
+if ($u) {
     if ($u['is_blocked']) {
-        echo json_encode(["status" => "error", "message" => "Your account is restricted. Please see the librarian."]);
+        echo json_encode(["status" => "error", "message" => "Your account is restricted."]);
         exit;
     }
 
-    // Set session for user
     $_SESSION['user_id'] = $u['id'];
     $_SESSION['user_name'] = $u['name'];
     $_SESSION['user_email'] = $u['email'] ?? '';
-    $_SESSION['user_roles'] = ['user'];
 
     echo json_encode([
         "status" => "ok",
@@ -48,7 +32,6 @@ if ($res->num_rows > 0) {
         "program" => $u['program'] ?? 'N/A'
     ]);
 } else {
-    echo json_encode(["status" => "error", "message" => "User not found. Please use Google Sign-in or register."]);
+    echo json_encode(["status" => "error", "message" => "User not found."]);
 }
 exit;
-?>
