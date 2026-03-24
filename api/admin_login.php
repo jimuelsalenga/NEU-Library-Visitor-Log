@@ -6,6 +6,7 @@ require_once 'db.php';
 $google_client_id = getenv('GOOGLE_CLIENT_ID') ?: '';
 $allowed_domain = "neu.edu.ph"; 
 
+// If session is already authenticated, redirect to dashboard
 if (isset($_SESSION['role']) && $_SESSION['role'] === 'admin') {
     header("Location: admin.php");
     exit();
@@ -17,6 +18,7 @@ $error = '';
 if (isset($_POST['credential'])) {
     $id_token = $_POST['credential'];
     
+    // Using the ID Token to get user info via Google API
     $url = "https://oauth2.googleapis.com/tokeninfo?id_token=" . $id_token;
     $response = @file_get_contents($url);
     $user_info = json_decode($response, true);
@@ -28,19 +30,21 @@ if (isset($_POST['credential'])) {
         if ($domain !== $allowed_domain) {
             $error = "Access Denied: Use your @$allowed_domain account.";
         } else {
-            // Check database using PDO
+            // Check database using PDO (PostgreSQL/Supabase)
             $stmt = $conn->prepare("SELECT id, username FROM admins WHERE email = :email");
             $stmt->execute(['email' => $email]);
             $admin = $stmt->fetch();
 
             if ($admin) {
-                // Update stats
+                // Update login stats in Supabase
                 $update_stmt = $conn->prepare("UPDATE admins SET login_count = login_count + 1, last_login = NOW() WHERE id = :id");
                 $update_stmt->execute(['id' => $admin['id']]);
 
+                // Set Session Variables
                 $_SESSION['user_id'] = $admin['id'];
                 $_SESSION['role'] = 'admin';
                 $_SESSION['admin_user'] = $admin['username'];
+                
                 header("Location: admin.php");
                 exit();
             } else {
@@ -48,7 +52,7 @@ if (isset($_POST['credential'])) {
             }
         }
     } else {
-        $error = "Google Authentication Failed.";
+        $error = "Google Authentication Failed. Please try again.";
     }
 }
 
@@ -57,20 +61,22 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['u'])) {
     $u = trim($_POST['u']);
     $p = $_POST['p'];
 
-    // Database Check
+    // Database Check using PDO
     $stmt = $conn->prepare("SELECT id, username, password FROM admins WHERE username = :u");
     $stmt->execute(['u' => $u]);
     $admin = $stmt->fetch();
     
     if ($admin) {
-        // Checking both direct match (for your demo) and hashed passwords
+        // Checking both direct match and hashed passwords for flexibility
         if ($p === $admin['password'] || password_verify($p, $admin['password'])) {
+            // Update stats
             $update_stmt = $conn->prepare("UPDATE admins SET login_count = login_count + 1, last_login = NOW() WHERE id = :id");
             $update_stmt->execute(['id' => $admin['id']]);
         
             $_SESSION['user_id'] = $admin['id'];
             $_SESSION['role'] = 'admin';
             $_SESSION['admin_user'] = $admin['username'];
+            
             header("Location: admin.php");
             exit();
         }

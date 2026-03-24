@@ -20,7 +20,7 @@ try {
     
     // Create a PDO connection
     $pdo = new PDO($dsn, $user, $pass, [
-        PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION, // Fixed constant name
+        PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION, // Corrected line
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
         PDO::ATTR_EMULATE_PREPARES   => false,
     ]);
