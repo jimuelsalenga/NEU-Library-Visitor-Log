@@ -1,9 +1,13 @@
 <?php
 // index.php
 session_start();
-include 'db.php';
 
-// 1. SESSION CHECK - Redirect if already logged in
+// 1. DATABASE CONNECTION
+// We keep this in a separate file (db.php) for security.
+// Ensure your db.php contains your sql310.infinityfree.com credentials.
+include 'db.php'; 
+
+// 2. SESSION CHECK - Redirect if already logged in
 if (isset($_SESSION['role'])) {
     if ($_SESSION['role'] === 'admin') {
         header("Location: admin.php");
@@ -13,8 +17,8 @@ if (isset($_SESSION['role'])) {
     exit();
 }
 
-// 2. GOOGLE AUTH SETUP (Ensure these match your google-auth.php config)
-// If you are using a separate google-auth.php file, this link is correct.
+// 3. GOOGLE AUTH SETUP
+// Ensure this matches your google-auth.php filename
 $googleAuthUrl = "google-auth.php"; 
 ?>
 <!DOCTYPE html>
@@ -22,10 +26,15 @@ $googleAuthUrl = "google-auth.php";
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    <meta name="google-site-verification" content="unf_MwoyAcOp6ShiLQoeqlhiUHEZR_FOsLPZ-VbSNaM" />
+    
     <title>NEU Library | Visitor Check-In</title>
+    
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="https://unpkg.com/html5-qrcode"></script>
+    
     <style>
         :root {
             --primary-green: #1a7a52;
@@ -138,6 +147,10 @@ $googleAuthUrl = "google-auth.php";
             transition: 0.2s;
         }
         .admin-link:hover { background: #eee; color: #333; }
+        
+        .demo-bypass {
+            display: block; margin-top: 10px; color: #aaa; text-decoration: none; font-size: 10px;
+        }
     </style>
 </head>
 <body>
@@ -185,13 +198,14 @@ $googleAuthUrl = "google-auth.php";
     </button>
 
     <a href="admin_login.php" class="admin-link"><i class="fas fa-lock"></i> Admin Access</a>
+    
+    <a href="admin.php?bypass=true" class="demo-bypass">Demo Login (Bypass API)</a>
 </div>
 
 <script>
     window.onload = function() {
         const urlParams = new URLSearchParams(window.location.search);
         
-        // Handle unauthorized or domain errors
         if (urlParams.get('error') === 'invalid_domain') {
             Swal.fire({
                 icon: 'error',
@@ -208,7 +222,6 @@ $googleAuthUrl = "google-auth.php";
             });
         }
 
-        // Handle Logout success
         if (urlParams.get('msg') === 'logged_out') {
             Swal.fire({
                 icon: 'success',
