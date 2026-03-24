@@ -1,19 +1,20 @@
 <?php
 // google-callback.php
 require_once 'vendor/autoload.php';
-require_once 'db.php'; // This already has session_start()
+require_once 'db.php'; // Ensure db.php uses PDO as previously updated
 
-try {
-    $dotenv = Dotenv\Dotenv::createImmutable(__DIR__);
-    $dotenv->load();
-} catch (Exception $e) {
-    // If .env is missing, we use hardcoded values or exit gracefully
-}
+/**
+ * CONFIGURATION
+ * Pulling from Vercel Environment Variables using getenv()
+ */
+$clientId     = getenv('GOOGLE_CLIENT_ID');
+$clientSecret = getenv('GOOGLE_CLIENT_SECRET'); 
+$redirectUri  = 'https://neu-library-visitor-log.vercel.app/api/google-callback.php';
 
 $client = new Google_Client();
-$client->setClientId($_ENV['GOOGLE_CLIENT_ID'] ?? '316392666390-0acj130tcu81sbsk8e30n68lm8r6apsb.apps.googleusercontent.com');
-$client->setClientSecret($_ENV['GOOGLE_CLIENT_SECRET'] ?? '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');
-$client->setRedirectUri('http://localhost/neu-library/google-callback.php');
+$client->setClientId($clientId);
+$client->setClientSecret($clientSecret);
+$client->setRedirectUri($redirectUri);
 
 if (isset($_GET['code'])) {
     $token = $client->fetchAccessTokenWithAuthCode($_GET['code']);
@@ -31,7 +32,7 @@ if (isset($_GET['code'])) {
     $name = $google_account_info->name;
     $google_id = $google_account_info->id;
 
-    // --- 1. DOMAIN LOCKDOWN ---
+    // --- 1. DOMAIN LOCKDOWN (@neu.edu.ph) ---
     $allowed_domain = 'neu.edu.ph';
     $user_domain = substr(strrchr($email, "@"), 1);
 
@@ -45,11 +46,10 @@ if (isset($_GET['code'])) {
     // --- 2. SESSION REFRESH ---
     session_regenerate_id(true); 
 
-    // --- 3. DATABASE CHECK ---
-    $stmt = $conn->prepare("SELECT program, college, role FROM users WHERE google_id = ?");
-    $stmt->bind_param("s", $google_id);
-    $stmt->execute();
-    $user_data = $stmt->get_result()->fetch_assoc();
+    // --- 3. DATABASE CHECK (Using PDO for Supabase) ---
+    $stmt = $conn->prepare("SELECT program, college, role FROM users WHERE google_id = :gid");
+    $stmt->execute(['gid' => $google_id]);
+    $user_data = $stmt->fetch();
 
     // --- 4. ROLE & REDIRECTION LOGIC ---
     $admin_emails = ['admin@neu.edu.ph', 'jcesperanza@neu.edu.ph']; 
@@ -58,7 +58,7 @@ if (isset($_GET['code'])) {
         // ADMIN FLOW
         $_SESSION['user_id'] = $google_id;
         $_SESSION['role'] = 'admin';
-        $_SESSION['admin'] = true; // Match admin_login.php key
+        $_SESSION['admin'] = true; 
         $_SESSION['admin_user'] = $name; 
         header("Location: admin.php?msg=welcome_admin");
         exit();
@@ -70,9 +70,13 @@ if (isset($_GET['code'])) {
         $_SESSION['user_email'] = $email;
         
         if (!$user_data) {
-            $ins = $conn->prepare("INSERT INTO users (google_id, name, email, role) VALUES (?, ?, ?, 'student')");
-            $ins->bind_param("sss", $google_id, $name, $email);
-            $ins->execute();
+            // New Student - INSERT using PDO
+            $ins = $conn->prepare("INSERT INTO users (google_id, name, email, role) VALUES (:gid, :name, :email, 'student')");
+            $ins->execute([
+                'gid'   => $google_id,
+                'name'  => $name,
+                'email' => $email
+            ]);
             header("Location: user-details.php?msg=new_account");
         } elseif (empty($user_data['program']) || empty($user_data['college'])) {
             header("Location: user-details.php");

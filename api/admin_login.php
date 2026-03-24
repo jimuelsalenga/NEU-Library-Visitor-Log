@@ -2,8 +2,8 @@
 // admin_login.php
 require_once 'db.php';
 
-// Pull credentials from .env
-$google_client_id = $_ENV['GOOGLE_CLIENT_ID'] ?? '';
+// Pull credentials from Vercel Environment Variables
+$google_client_id = getenv('GOOGLE_CLIENT_ID') ?: '';
 $allowed_domain = "neu.edu.ph"; 
 
 if (isset($_SESSION['role']) && $_SESSION['role'] === 'admin') {
@@ -29,20 +29,17 @@ if (isset($_POST['credential'])) {
         if ($domain !== $allowed_domain) {
             $error = "Access Denied: Use your @$allowed_domain account.";
         } else {
-            // Check database for this NEU email
-            $stmt = $conn->prepare("SELECT id, username FROM admins WHERE email = ?");
-            $stmt->bind_param("s", $email);
-            $stmt->execute();
-            $res = $stmt->get_result();
+            // Check database for this NEU email using PDO (Supabase)
+            $stmt = $conn->prepare("SELECT id, username FROM admins WHERE email = :email");
+            $stmt->execute(['email' => $email]);
+            $admin = $stmt->fetch();
 
-            if ($res->num_rows > 0) {
-                $admin = $res->fetch_assoc();
+            if ($admin) {
                 $admin_id = $admin['id'];
 
                 // UPDATE LOGIN COUNT AND TIME FOR GOOGLE USERS
-                $update_stmt = $conn->prepare("UPDATE admins SET login_count = login_count + 1, last_login = NOW() WHERE id = ?");
-                $update_stmt->bind_param("i", $admin_id);
-                $update_stmt->execute();
+                $update_stmt = $conn->prepare("UPDATE admins SET login_count = login_count + 1, last_login = NOW() WHERE id = :id");
+                $update_stmt->execute(['id' => $admin_id]);
 
                 $_SESSION['user_id'] = $admin_id;
                 $_SESSION['role'] = 'admin';
@@ -63,7 +60,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['u'])) {
     $u = trim($_POST['u']);
     $p = $_POST['p'];
 
-    // Demo Account Logic (Static check)
+    // Demo Account Logic
     if ($u === 'admin' && $p === 'admin321') {
         $_SESSION['user_id'] = 'demo';
         $_SESSION['role'] = 'admin';
@@ -72,24 +69,19 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['u'])) {
         exit();
     } 
     
-    // Database Check for registered admins
-    $stmt = $conn->prepare("SELECT id, username, password FROM admins WHERE username = ?");
-    $stmt->bind_param("s", $u);
-    $stmt->execute();
-    $res = $stmt->get_result();
+    // Database Check for registered admins using PDO
+    $stmt = $conn->prepare("SELECT id, username, password FROM admins WHERE username = :u");
+    $stmt->execute(['u' => $u]);
+    $admin = $stmt->fetch();
     
-    if ($res->num_rows > 0) {
-        $admin = $res->fetch_assoc();
-        
-        // Note: In production, use password_verify($p, $admin['password'])
-        // For now, using direct check to match your current DB setup
+    if ($admin) {
+        // Checking both direct match and hashed passwords
         if ($p === $admin['password'] || password_verify($p, $admin['password'])) {
             $admin_id = $admin['id'];
             
             // UPDATE LOGIN COUNT AND TIME FOR MANUAL USERS
-            $update_stmt = $conn->prepare("UPDATE admins SET login_count = login_count + 1, last_login = NOW() WHERE id = ?");
-            $update_stmt->bind_param("i", $admin_id);
-            $update_stmt->execute();
+            $update_stmt = $conn->prepare("UPDATE admins SET login_count = login_count + 1, last_login = NOW() WHERE id = :id");
+            $update_stmt->execute(['id' => $admin_id]);
         
             $_SESSION['user_id'] = $admin_id;
             $_SESSION['role'] = 'admin';
@@ -110,6 +102,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['u'])) {
     <title>NEU Admin Login</title>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <style>
+        /* (Style remains same as your original) */
         body { font-family: 'Segoe UI', system-ui, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; background: #f0f2f5; margin: 0; }
         .login-card { background: white; padding: 2.5rem; border-radius: 24px; box-shadow: 0 15px 35px rgba(0,0,0,0.1); width: 360px; text-align: center; }
         .logo-box { background: #0B5D3B; color: white; width: 64px; height: 64px; display: flex; align-items: center; justify-content: center; border-radius: 18px; margin: 0 auto 20px; font-size: 1.8rem; }
@@ -138,7 +131,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['u'])) {
              data-client_id="<?= htmlspecialchars($google_client_id) ?>"
              data-context="signin"
              data-ux_mode="popup"
-             data-login_uri="http://localhost/neu-library/admin_login.php"
+             data-login_uri="https://neu-library-visitor-log.vercel.app/api/admin_login.php"
              data-auto_prompt="false">
         </div>
         <div class="g_id_signin" data-type="standard" data-shape="pill" data-theme="outline" data-text="signin_with" data-size="large" data-logo_alignment="left" data-width="360"></div>
