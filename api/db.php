@@ -4,19 +4,39 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-// Live Credentials from your screenshot
-$host = 'sql310.infinityfree.com'; 
-$user = 'if0_41458553';
-$pass = '0YDDBJ8yMEEd'; // Replace with your actual password
-$dbname = 'if0_41458553_neu_library';
+/**
+ * DATABASE CONNECTION
+ * Pulling credentials from Vercel Environment Variables
+ */
+$host = getenv('DB_HOST');
+$port = "5432"; // Default Supabase port
+$dbname = getenv('DB_NAME');
+$user = getenv('DB_USER');
+$pass = getenv('DB_PASSWORD');
 
-$conn = new mysqli($host, $user, $pass, $dbname);
+try {
+    // Supabase uses PostgreSQL, so we use the 'pgsql' driver
+    $dsn = "pgsql:host=$host;port=$port;dbname=$dbname;";
+    
+    // Create a PDO connection
+    $pdo = new PDO($dsn, $user, $pass, [
+        PDO::ATTR_ERRMODE            => PDO::ATTR_ERRMODE_EXCEPTION,
+        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        PDO::ATTR_EMULATE_PREPARES   => false,
+    ]);
 
-if ($conn->connect_error) {
-    die("Connection failed: " . $conn->connect_error);
+    // For compatibility with your existing code that might use $conn
+    $conn = $pdo; 
+
+} catch (PDOException $e) {
+    // Error handling (logged silently in production)
+    error_log("Connection failed: " . $e->getMessage());
+    die("Database connection error. Please check back later.");
 }
 
-// Admin protection helper functions
+/**
+ * AUTHENTICATION HELPERS
+ */
 function requireAdmin() {
     if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'admin') {
         header("Location: index.php?error=unauthorized");

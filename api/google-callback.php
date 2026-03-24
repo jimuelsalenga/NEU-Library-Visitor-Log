@@ -11,8 +11,8 @@ try {
 }
 
 $client = new Google_Client();
-$client->setClientId($_ENV['GOOGLE_CLIENT_ID'] ?? 'YOUR_CLIENT_ID');
-$client->setClientSecret($_ENV['GOOGLE_CLIENT_SECRET'] ?? 'YOUR_CLIENT_SECRET');
+$client->setClientId($_ENV['GOOGLE_CLIENT_ID'] ?? '316392666390-0acj130tcu81sbsk8e30n68lm8r6apsb.apps.googleusercontent.com');
+$client->setClientSecret($_ENV['GOOGLE_CLIENT_SECRET'] ?? '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');
 $client->setRedirectUri('http://localhost/neu-library/google-callback.php');
 
 if (isset($_GET['code'])) {
